@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caches and virtual environments
+.venv/
+env/
+venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Project-specific ignored folders
+trash/
+tools/tesseract/
+
+# Data and models (heavy/sensitive files out of version control)
+models/*.onnx
+models/*.pt
+runs/
+*.onnx
+*.pt
+data/teste/
+results/figuras/
+
+# Environment and logs
+.env
+*.log
