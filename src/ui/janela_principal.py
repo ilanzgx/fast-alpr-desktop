@@ -46,7 +46,7 @@ class JanelaPrincipal(QMainWindow):
         self._timer_debounce.setInterval(250)
         self._timer_debounce.timeout.connect(self._executar_pipeline)
 
-        self.setWindowTitle("Reconhecimento de Placas Veiculares (ALPR Didático)")
+        self.setWindowTitle("Reconhecimento de Placas de Veiculos")
         self.resize(1240, 820)
         self.setMinimumSize(960, 640)
         self.setStyleSheet(TEMA_CLARO)
@@ -99,10 +99,14 @@ class JanelaPrincipal(QMainWindow):
 
         # 2.3 Caracteres Segmentados
         quadro_caracteres = QFrame()
-        quadro_caracteres.setStyleSheet("background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 6px;")
+        quadro_caracteres.setStyleSheet(
+            "background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 6px;"
+        )
         layout_caract_bloco = QVBoxLayout(quadro_caracteres)
         lbl_caract_tit = QLabel("CARACTERES SEGMENTADOS")
-        lbl_caract_tit.setStyleSheet("font-size: 11px; font-weight: 700; color: #64748B; letter-spacing: 0.5px;")
+        lbl_caract_tit.setStyleSheet(
+            "font-size: 11px; font-weight: 700; color: #64748B; letter-spacing: 0.5px;"
+        )
         layout_caract_bloco.addWidget(lbl_caract_tit)
 
         self._layout_caracteres = QHBoxLayout()
@@ -115,7 +119,9 @@ class JanelaPrincipal(QMainWindow):
 
         # 2.4 Cartão de Resultado e OCR
         quadro_resultado = QFrame()
-        quadro_resultado.setStyleSheet("background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; padding: 12px;")
+        quadro_resultado.setStyleSheet(
+            "background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; padding: 12px;"
+        )
         layout_resultado = QVBoxLayout(quadro_resultado)
 
         linha_placa = QHBoxLayout()
@@ -137,7 +143,9 @@ class JanelaPrincipal(QMainWindow):
         linha_detalhes.addWidget(self._lbl_bruto)
 
         self._lbl_metricas_tempo = QLabel("")
-        self._lbl_metricas_tempo.setStyleSheet("color: #64748B; font-size: 11px; text-align: right;")
+        self._lbl_metricas_tempo.setStyleSheet(
+            "color: #64748B; font-size: 11px; text-align: right;"
+        )
         linha_detalhes.addWidget(self._lbl_metricas_tempo, alignment=Qt.AlignmentFlag.AlignRight)
         layout_resultado.addLayout(linha_detalhes)
 
@@ -241,8 +249,17 @@ class JanelaPrincipal(QMainWindow):
         for idx, char_img in enumerate(lista_caracteres):
             lbl_char = QLabel()
             pix = numpy_para_pixmap(char_img)
-            lbl_char.setPixmap(pix.scaled(32, 48, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-            lbl_char.setStyleSheet("background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 4px; padding: 2px;")
+            lbl_char.setPixmap(
+                pix.scaled(
+                    32,
+                    48,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+            lbl_char.setStyleSheet(
+                "background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 4px; padding: 2px;"
+            )
             self._layout_caracteres.addWidget(lbl_char)
 
     def _atualizar_badge(self, formato: str) -> None:
@@ -323,6 +340,8 @@ class JanelaPrincipal(QMainWindow):
             )
             txt_path.write_text(conteudo, encoding="utf-8")
 
-            QMessageBox.information(self, "Exportação Concluída", f"Resultados salvos com sucesso em:\n{caminho_pasta}")
+            QMessageBox.information(
+                self, "Exportação Concluída", f"Resultados salvos com sucesso em:\n{caminho_pasta}"
+            )
         except Exception as e:
             QMessageBox.critical(self, "Erro na Exportação", f"Falha ao exportar resultados:\n{e}")

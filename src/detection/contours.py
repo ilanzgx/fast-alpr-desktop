@@ -71,4 +71,18 @@ def detectar_placa_classica(
                     melhor_caixa = Caixa(x1=x, y1=y, x2=x + w, y2=y + h, confianca=1.0)
                     melhores_vertices = aprox.reshape(4, 2)
 
+    if melhor_caixa is not None:
+        bordas_bgr = cv2.cvtColor(bordas, cv2.COLOR_GRAY2BGR)
+        if melhores_vertices is not None:
+            cv2.drawContours(bordas_bgr, [melhores_vertices], -1, (0, 200, 0), 2)
+        else:
+            cv2.rectangle(
+                bordas_bgr,
+                (melhor_caixa.x1, melhor_caixa.y1),
+                (melhor_caixa.x2, melhor_caixa.y2),
+                (0, 200, 0),
+                2,
+            )
+        bordas = bordas_bgr
+
     return melhor_caixa, melhores_vertices, bordas

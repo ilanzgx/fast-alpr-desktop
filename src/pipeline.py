@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 
+import cv2
 import numpy as np
 
 from src.config import Caixa, ParametrosPipeline, ResultadoPipeline, obter_caminho_modelo
@@ -74,6 +75,18 @@ def executar_pipeline(imagem: np.ndarray, params: ParametrosPipeline) -> Resulta
         except Exception as det_err:
             erro = f"Falha na inferência YOLO: {det_err}"
 
+        # Gera a visualização de bordas / detecção para o painel "1. Bordas / Detecção"
+        cinza = cv2.cvtColor(imagem, cv2.COLOR_BGR2GRAY) if imagem.ndim == 3 else imagem.copy()
+        suave = cv2.GaussianBlur(cinza, (5, 5), 0)
+        bordas_canny = cv2.Canny(suave, params.canny_min, params.canny_max)
+        if caixa is not None:
+            bordas_bgr = cv2.cvtColor(bordas_canny, cv2.COLOR_GRAY2BGR)
+            bordas = desenhar_caixa(
+                bordas_bgr, caixa, cor=(0, 200, 0), rotulo=f"Placa {caixa.confianca:.0%}"
+            )
+        else:
+            bordas = bordas_canny
+
     tempos["deteccao"] = (time.perf_counter() - t0_det) * 1000.0
 
     if caixa is None:
@@ -143,6 +156,7 @@ def executar_pipeline(imagem: np.ndarray, params: ParametrosPipeline) -> Resulta
         roi_cinza=roi_cinza,
         roi_clahe=roi_clahe,
         binarizada=binarizada,
+        caracteres=caracteres,
         psm_padrao=params.ocr_psm,
         robusta=params.leitura_robusta,
         modo_livre=params.modo_livre,
