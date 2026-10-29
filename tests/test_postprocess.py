@@ -61,3 +61,24 @@ def test_idempotencia():
     segunda = corrigir_por_posicao(primeira.texto_final)
     assert primeira.texto_final == segunda.texto_final
     assert primeira.formato == segunda.formato
+
+
+def test_extracao_janela_com_ruidos_de_borda():
+    # Ruído de borda/QR code no início e final da placa
+    res1 = corrigir_por_posicao("FPOX4G215")
+    assert res1.texto_final == "POX4G21"
+    assert res1.formato == "mercosul"
+    assert res1.valido is True
+
+    # Ruído com sufixo ou prefixo (ex: "BR" no início)
+    res2 = corrigir_por_posicao("BRABC1D23")
+    assert res2.texto_final == "ABC1D23"
+    assert res2.formato == "mercosul"
+    assert res2.valido is True
+
+    # Placa antiga com ruído de moldura
+    res3 = corrigir_por_posicao("1ABC1234F")
+    assert res3.texto_final == "ABC1234"
+    assert res3.formato == "antigo"
+    assert res3.valido is True
+
