@@ -18,37 +18,19 @@ class PainelImagem(QFrame):
         self._pixmap_original: QPixmap | None = None
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setStyleSheet("""
-            PainelImagem {
-                background-color: #FFFFFF;
-                border: 1px solid #E2E8F0;
-                border-radius: 8px;
-            }
-        """)
+        self.setObjectName("painel_imagem_card")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
 
         self._lbl_titulo = QLabel(titulo)
-        self._lbl_titulo.setStyleSheet("""
-            font-size: 11px;
-            font-weight: 700;
-            color: #64748B;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        """)
+        self._lbl_titulo.setObjectName("painel_imagem_titulo")
         layout.addWidget(self._lbl_titulo)
 
         self._lbl_imagem = QLabel("(Vazio)")
         self._lbl_imagem.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._lbl_imagem.setStyleSheet("""
-            background-color: #F8FAFC;
-            border: 1px dashed #CBD5E1;
-            border-radius: 6px;
-            color: #94A3B8;
-            font-size: 12px;
-        """)
+        self._lbl_imagem.setObjectName("painel_imagem_viewport_vazio")
         self._lbl_imagem.setMinimumSize(80, 60)
         layout.addWidget(self._lbl_imagem, stretch=1)
 
@@ -57,6 +39,11 @@ class PainelImagem(QFrame):
         if img is None or img.size == 0:
             self.limpar()
             return
+
+        if self._lbl_imagem.objectName() != "painel_imagem_viewport_ativo":
+            self._lbl_imagem.setObjectName("painel_imagem_viewport_ativo")
+            self._lbl_imagem.style().unpolish(self._lbl_imagem)
+            self._lbl_imagem.style().polish(self._lbl_imagem)
 
         pix = numpy_para_pixmap(img)
         self._pixmap_original = pix
@@ -67,6 +54,10 @@ class PainelImagem(QFrame):
         self._pixmap_original = None
         self._lbl_imagem.setPixmap(QPixmap())
         self._lbl_imagem.setText("(Vazio)")
+        if self._lbl_imagem.objectName() != "painel_imagem_viewport_vazio":
+            self._lbl_imagem.setObjectName("painel_imagem_viewport_vazio")
+            self._lbl_imagem.style().unpolish(self._lbl_imagem)
+            self._lbl_imagem.style().polish(self._lbl_imagem)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)

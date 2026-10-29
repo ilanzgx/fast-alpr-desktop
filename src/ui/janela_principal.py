@@ -99,18 +99,18 @@ class JanelaPrincipal(QMainWindow):
 
         # 2.3 Caracteres Segmentados
         quadro_caracteres = QFrame()
-        quadro_caracteres.setStyleSheet(
-            "background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 8px; padding: 6px;"
-        )
+        quadro_caracteres.setObjectName("card_caracteres")
         layout_caract_bloco = QVBoxLayout(quadro_caracteres)
+        layout_caract_bloco.setContentsMargins(12, 10, 12, 10)
+        layout_caract_bloco.setSpacing(8)
+
         lbl_caract_tit = QLabel("CARACTERES SEGMENTADOS")
-        lbl_caract_tit.setStyleSheet(
-            "font-size: 11px; font-weight: 700; color: #64748B; letter-spacing: 0.5px;"
-        )
+        lbl_caract_tit.setObjectName("card_secao_titulo")
         layout_caract_bloco.addWidget(lbl_caract_tit)
 
         self._layout_caracteres = QHBoxLayout()
         self._layout_caracteres.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self._layout_caracteres.setSpacing(8)
         self._lbl_sem_caracteres = QLabel("(Nenhum caractere segmentado)")
         self._lbl_sem_caracteres.setStyleSheet("color: #94A3B8; font-style: italic;")
         self._layout_caracteres.addWidget(self._lbl_sem_caracteres)
@@ -119,10 +119,10 @@ class JanelaPrincipal(QMainWindow):
 
         # 2.4 Cartão de Resultado e OCR
         quadro_resultado = QFrame()
-        quadro_resultado.setStyleSheet(
-            "background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; padding: 12px;"
-        )
+        quadro_resultado.setObjectName("card_resultado")
         layout_resultado = QVBoxLayout(quadro_resultado)
+        layout_resultado.setContentsMargins(14, 12, 14, 12)
+        layout_resultado.setSpacing(10)
 
         linha_placa = QHBoxLayout()
         self._txt_resultado = QLineEdit()
@@ -139,13 +139,11 @@ class JanelaPrincipal(QMainWindow):
 
         linha_detalhes = QHBoxLayout()
         self._lbl_bruto = QLabel("Texto bruto OCR: -")
-        self._lbl_bruto.setStyleSheet("color: #475569; font-size: 12px;")
+        self._lbl_bruto.setObjectName("lbl_bruto_texto")
         linha_detalhes.addWidget(self._lbl_bruto)
 
         self._lbl_metricas_tempo = QLabel("")
-        self._lbl_metricas_tempo.setStyleSheet(
-            "color: #64748B; font-size: 11px; text-align: right;"
-        )
+        self._lbl_metricas_tempo.setObjectName("lbl_metricas_tempo")
         linha_detalhes.addWidget(self._lbl_metricas_tempo, alignment=Qt.AlignmentFlag.AlignRight)
         layout_resultado.addLayout(linha_detalhes)
 
@@ -251,15 +249,14 @@ class JanelaPrincipal(QMainWindow):
             pix = numpy_para_pixmap(char_img)
             lbl_char.setPixmap(
                 pix.scaled(
-                    32,
-                    48,
+                    34,
+                    50,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation,
                 )
             )
-            lbl_char.setStyleSheet(
-                "background: #F1F5F9; border: 1px solid #CBD5E1; border-radius: 4px; padding: 2px;"
-            )
+            lbl_char.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl_char.setObjectName("tile_caractere")
             self._layout_caracteres.addWidget(lbl_char)
 
     def _atualizar_badge(self, formato: str) -> None:

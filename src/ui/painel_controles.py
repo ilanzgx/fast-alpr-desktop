@@ -60,6 +60,8 @@ class PainelControles(QWidget):
         layout = QVBoxLayout(grupo)
 
         self._btn_carregar = QPushButton("Carregar Imagem...")
+        self._btn_carregar.setMinimumHeight(36)
+        self._btn_carregar.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_carregar.clicked.connect(self._abrir_seletor_arquivo)
         layout.addWidget(self._btn_carregar)
 
@@ -172,14 +174,19 @@ class PainelControles(QWidget):
 
     def _criar_botoes_acao(self) -> None:
         layout = QVBoxLayout()
+        layout.setSpacing(8)
 
         self._btn_processar = QPushButton("Processar Imagem")
         self._btn_processar.setObjectName("btn_primario")
+        self._btn_processar.setMinimumHeight(42)
+        self._btn_processar.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_processar.setEnabled(False)
         self._btn_processar.clicked.connect(self.processar_clicado.emit)
         layout.addWidget(self._btn_processar)
 
         self._btn_exportar = QPushButton("Exportar Resultados...")
+        self._btn_exportar.setMinimumHeight(36)
+        self._btn_exportar.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_exportar.setEnabled(False)
         self._btn_exportar.clicked.connect(self.exportar_clicado.emit)
         layout.addWidget(self._btn_exportar)
@@ -196,6 +203,8 @@ class PainelControles(QWidget):
         spin.setRange(vmin, vmax)
         spin.setSingleStep(passo)
         spin.setValue(vpadrao)
+        spin.setFixedWidth(64)
+        spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout_rotulo.addWidget(spin)
         layout_pai.addLayout(layout_rotulo)
 
@@ -222,6 +231,8 @@ class PainelControles(QWidget):
         spin.setRange(vmin, vmax)
         spin.setSingleStep(passo)
         spin.setValue(vpadrao)
+        spin.setFixedWidth(64)
+        spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout_rotulo.addWidget(spin)
         layout_pai.addLayout(layout_rotulo)
 
