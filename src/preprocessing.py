@@ -92,7 +92,7 @@ def recortar_roi(imagem: np.ndarray, caixa: Caixa, margem: float = 0.04) -> np.n
     return recorte
 
 
-def ampliar_roi(roi: np.ndarray, altura_alvo: int = 120) -> np.ndarray:
+def ampliar_roi(roi: np.ndarray, altura_alvo: int = 150) -> np.ndarray:
     """Redimensiona o ROI mantendo a proporção para melhorar o OCR (altura mínima recomendada)."""
     h, w = roi.shape[:2]
     if h == 0 or w == 0:

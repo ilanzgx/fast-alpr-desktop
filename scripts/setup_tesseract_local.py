@@ -27,7 +27,9 @@ def verificar_ou_orientar() -> None:
     print()
     print("1. [Portátil Local no Projeto - Recomendado]:")
     print("   Baixe o instalador do UB Mannheim:")
-    print("   https://digi.bib.uni-mannheim.de/tesseract/tesseract-ocr-w64-setup-5.4.0.20240606.exe")
+    print(
+        "   https://github.com/UB-Mannheim/tesseract/releases/download/v5.4.0.20240606/tesseract-ocr-w64-setup-5.4.0.20240606.exe"
+    )
     print("   Abra o executável com 7-Zip ou WinRAR e extraia os arquivos")
     print("   (tesseract.exe, dlls e a pasta tessdata) diretamente em:")
     print(f"   {TOOLS_DIR}")

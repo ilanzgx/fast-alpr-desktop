@@ -77,3 +77,38 @@ def normalizar_caractere(
     tela[topo : topo + novo_h, esq : esq + novo_w] = redim
 
     return tela
+
+
+def montar_faixa_caracteres(
+    caracteres: list[np.ndarray],
+    espacamento: int = 10,
+    margem_v: int = 16,
+    margem_h: int = 16,
+) -> np.ndarray | None:
+    """Monta uma imagem horizontal com os caracteres segmentados dispostos sequencialmente.
+    
+    Remove qualquer ruído externo (moldura da placa, QR code, parafusos, cabeçalho)
+    e apresenta ao Tesseract uma linha limpa com texto preto sobre fundo branco.
+    """
+    if not caracteres:
+        return None
+
+    h_char, w_char = caracteres[0].shape[:2]
+    num_chars = len(caracteres)
+    largura_total = num_chars * w_char + (num_chars - 1) * espacamento + 2 * margem_h
+    altura_total = h_char + 2 * margem_v
+
+    faixa = np.full((altura_total, largura_total), 255, dtype=np.uint8)
+
+    for i, char_img in enumerate(caracteres):
+        x = margem_h + i * (w_char + espacamento)
+        # Assegura polaridade: texto escuro (0) sobre fundo claro (255)
+        if np.mean(char_img) < 128:
+            char_proc = cv2.bitwise_not(char_img)
+        else:
+            char_proc = char_img.copy()
+
+        faixa[margem_v : margem_v + h_char, x : x + w_char] = char_proc
+
+    return faixa
+
