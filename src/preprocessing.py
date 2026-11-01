@@ -106,45 +106,134 @@ def ampliar_roi(roi: np.ndarray, altura_alvo: int = 150) -> np.ndarray:
     return roi
 
 
-def corrigir_inclinacao(cinza: np.ndarray) -> tuple[np.ndarray, float]:
-    """Estima e corrige pequenas inclinações angulares da placa via minAreaRect nos pixels do texto."""
-    _, binaria = cv2.threshold(cinza, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    h, w = binaria.shape
+def estimar_angulo_inclinacao(cinza: np.ndarray) -> float:
+    """Estima a inclinação angular da placa (-45° a +45°) usando Hough Lines e contornos."""
+    h, w = cinza.shape[:2]
+    if h < 10 or w < 20:
+        return 0.0
 
-    # Evita as bordas do recorte
+    # 1. CLAHE para reforçar contraste de bordas mesmo em baixa iluminação
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    cinza_clahe = clahe.apply(cinza)
+
+    # 2. Detecção via Hough Lines Ponderadas por Comprimento
+    suave = cv2.GaussianBlur(cinza_clahe, (5, 5), 0)
+    bordas = cv2.Canny(suave, 50, 150)
+    linhas = cv2.HoughLinesP(
+        bordas,
+        rho=1,
+        theta=np.pi / 180,
+        threshold=max(20, int(w * 0.15)),
+        minLineLength=max(20, int(w * 0.20)),
+        maxLineGap=max(5, int(w * 0.05)),
+    )
+
+    angulos: list[float] = []
+    pesos: list[float] = []
+    if linhas is not None:
+        for linha in linhas:
+            lx1, ly1, lx2, ly2 = linha[0]
+            comp = float(np.hypot(lx2 - lx1, ly2 - ly1))
+            ang = float(np.degrees(np.arctan2(ly2 - ly1, lx2 - lx1)))
+            if -45.0 <= ang <= 45.0:
+                angulos.append(ang)
+                pesos.append(comp)
+
+    if angulos and sum(pesos) > 0:
+        return float(np.average(angulos, weights=pesos))
+
+    # 3. Fallback: minAreaRect no contorno claro da placa
+    _, thr = cv2.threshold(cinza_clahe, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    contornos, _ = cv2.findContours(thr, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for c in sorted(contornos, key=cv2.contourArea, reverse=True):
+        if cv2.contourArea(c) > (h * w * 0.10):
+            rect = cv2.minAreaRect(c)
+            (rx, ry), (rw, rh), rang = rect
+            if rw < rh:
+                rang += 90.0
+            if rang > 45.0:
+                rang -= 90.0
+            if abs(rang) <= 45.0:
+                return float(rang)
+
+    # 4. Fallback clássico: minAreaRect nos pixels escuros do texto
     by = max(1, int(h * 0.08))
     bx = max(1, int(w * 0.05))
-    interior = binaria[by : h - by, bx : w - bx]
-
-    # Busca pixels escuros (texto)
+    interior = thr[by : h - by, bx : w - bx]
     pontos = np.column_stack(np.where(interior < 128))
-    if len(pontos) < 15:
+    if len(pontos) >= 15:
+        pontos_xy = pontos[:, ::-1].astype(np.float32)
+        retangulo = cv2.minAreaRect(pontos_xy)
+        angulo = retangulo[-1]
+        larg_ret, alt_ret = retangulo[1]
+        if larg_ret < alt_ret:
+            angulo += 90.0
+        if angulo > 45.0:
+            angulo -= 90.0
+        if abs(angulo) <= 45.0:
+            return float(angulo)
+
+    return 0.0
+
+
+def corrigir_inclinacao(
+    cinza: np.ndarray, angulo_maximo: float = 45.0
+) -> tuple[np.ndarray, float]:
+    """Estima e corrige inclinações da placa rotacionando e expandindo o canvas para não podar bordas."""
+    h, w = cinza.shape[:2]
+    if h < 10 or w < 20:
         return cinza.copy(), 0.0
 
-    pontos_xy = pontos[:, ::-1].astype(np.float32)
-    retangulo = cv2.minAreaRect(pontos_xy)
-    angulo = retangulo[-1]
-    larg_ret, alt_ret = retangulo[1]
+    angulo = estimar_angulo_inclinacao(cinza)
 
-    if larg_ret < alt_ret:
-        angulo += 90
-
-    if angulo > 45:
-        angulo -= 90
-
-    # Ignora rotações insignificantes ou anômalas
-    if abs(angulo) < 1.0 or abs(angulo) > 15.0:
+    # Ignora rotações insignificantes (< 0.8°) ou além do limite aceitável
+    if abs(angulo) < 0.8 or abs(angulo) > angulo_maximo:
         return cinza.copy(), 0.0
 
-    centro = (w / 2, h / 2)
+    centro = (w / 2.0, h / 2.0)
     matriz = cv2.getRotationMatrix2D(centro, angulo, 1.0)
+
+    # Expande o canvas para que nenhum canto da placa seja cortado
+    cos = np.abs(matriz[0, 0])
+    sin = np.abs(matriz[0, 1])
+    novo_w = int((h * sin) + (w * cos))
+    novo_h = int((h * cos) + (w * sin))
+    matriz[0, 2] += (novo_w / 2.0) - centro[0]
+    matriz[1, 2] += (novo_h / 2.0) - centro[1]
+
     corrigida = cv2.warpAffine(
         cinza,
         matriz,
-        (w, h),
+        (novo_w, novo_h),
         flags=cv2.INTER_CUBIC,
-        borderMode=cv2.BORDER_REPLICATE,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0,
     )
+
+    # Se a rotação foi expressiva (> 2°), isola a caixa da placa para remover excesso de para-choque
+    if abs(angulo) >= 2.0:
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(corrigida)
+        _, thr = cv2.threshold(clahe, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        contornos, _ = cv2.findContours(thr, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        candidatos = []
+        for c in contornos:
+            x, y, cw, ch = cv2.boundingRect(c)
+            aspecto = cw / max(1, ch)
+            area = cv2.contourArea(c)
+            if aspecto >= 2.0 and cw > (novo_w * 0.35) and ch > 15:
+                candidatos.append((area, (x, y, cw, ch)))
+
+        if candidatos:
+            candidatos.sort(reverse=True)
+            _, (bx, by, bw, bh) = candidatos[0]
+            pad_x = int(bw * 0.03)
+            pad_y = int(bh * 0.05)
+            rx1 = max(0, bx - pad_x)
+            ry1 = max(0, by - pad_y)
+            rx2 = min(novo_w, bx + bw + pad_x)
+            ry2 = min(novo_h, by + bh + pad_y)
+            corrigida = corrigida[ry1:ry2, rx1:rx2]
+
     return corrigida, angulo
 
 

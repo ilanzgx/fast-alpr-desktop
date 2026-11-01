@@ -125,7 +125,9 @@ def executar_pipeline(imagem: np.ndarray, params: ParametrosPipeline) -> Resulta
 
     # Correção de rotação/inclinação (YOLO)
     if params.metodo == "yolo":
-        roi_cinza, _ = corrigir_inclinacao(roi_cinza)
+        roi_cinza, angulo = corrigir_inclinacao(roi_cinza)
+        if abs(angulo) >= 2.0:
+            roi_cinza = ampliar_roi(roi_cinza, altura_alvo=120)
 
     # Suavização Gaussiana
     suave = suavizar_gauss(roi_cinza, k=params.kernel_gauss)
