@@ -19,8 +19,10 @@ from src.preprocessing import (
     converter_cinza,
     corrigir_inclinacao,
     corrigir_perspectiva,
+    encontrar_vertices_placa_roi,
     recortar_roi,
     suavizar_gauss,
+    verificar_distorcao_geometrica,
 )
 from src.segmentation import segmentar_caracteres
 from src.utils import desenhar_caixa
@@ -114,6 +116,14 @@ def executar_pipeline(imagem: np.ndarray, params: ParametrosPipeline) -> Resulta
         roi = corrigir_perspectiva(imagem, vertices, largura=400, altura=130)
     else:
         roi = recortar_roi(imagem, caixa, margem=params.margem_roi)
+        roi = ampliar_roi(roi, altura_alvo=120)
+
+        # Detecção e retificação de perspectiva para placas diagonais/em ângulo (E3)
+        vertices_roi = encontrar_vertices_placa_roi(roi)
+        if vertices_roi is not None:
+            distorcido, _, _ = verificar_distorcao_geometrica(vertices_roi, threshold_graus=2.5)
+            if distorcido:
+                roi = corrigir_perspectiva(roi, vertices_roi, largura=None, altura=130)
 
     # Ampliação do ROI para dimensões confortáveis para OCR
     roi = ampliar_roi(roi, altura_alvo=120)
@@ -123,7 +133,7 @@ def executar_pipeline(imagem: np.ndarray, params: ParametrosPipeline) -> Resulta
     # -------------------------------------------------------------
     roi_cinza = converter_cinza(roi)
 
-    # Correção de rotação/inclinação (YOLO)
+    # Correção de rotação residual via Hough se ainda houver inclinação
     if params.metodo == "yolo":
         roi_cinza, angulo = corrigir_inclinacao(roi_cinza)
         if abs(angulo) >= 2.0:

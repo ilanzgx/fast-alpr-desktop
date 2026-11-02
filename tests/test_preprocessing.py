@@ -7,8 +7,10 @@ from src.preprocessing import (
     aplicar_clahe,
     binarizar,
     converter_cinza,
+    corrigir_perspectiva,
     recortar_roi,
     suavizar_gauss,
+    verificar_distorcao_geometrica,
 )
 
 
@@ -57,3 +59,25 @@ def test_recortar_roi():
     roi = recortar_roi(img, caixa, margem=0.04)
     assert roi.shape[0] == (50 + 4)  # altura 50 + 2*2
     assert roi.shape[1] == (100 + 8)  # largura 100 + 2*4
+
+
+def test_verificar_distorcao_geometrica():
+    # Retângulo ortogonal perfeito
+    pts_reto = np.array([[10, 10], [110, 10], [110, 50], [10, 50]], dtype=np.float32)
+    distorcido, inc_h, cis_v = verificar_distorcao_geometrica(pts_reto, threshold_graus=2.5)
+    assert not distorcido
+    assert inc_h < 0.1
+    assert cis_v < 0.1
+
+    # Quadrilátero com cisalhamento e inclinação em diagonal (~10 graus)
+    pts_diagonal = np.array([[10, 10], [115, 25], [130, 70], [25, 55]], dtype=np.float32)
+    distorcido, inc_h, cis_v = verificar_distorcao_geometrica(pts_diagonal, threshold_graus=2.5)
+    assert distorcido
+    assert inc_h > 2.5 or cis_v > 2.5
+
+
+def test_corrigir_perspectiva():
+    img = np.zeros((100, 200, 3), dtype=np.uint8)
+    vertices = np.array([[10, 10], [110, 15], [120, 60], [20, 55]], dtype=np.float32)
+    retificada = corrigir_perspectiva(img, vertices, largura=400, altura=130)
+    assert retificada.shape == (130, 400, 3)

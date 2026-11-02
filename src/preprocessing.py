@@ -107,7 +107,7 @@ def ampliar_roi(roi: np.ndarray, altura_alvo: int = 150) -> np.ndarray:
 
 
 def estimar_angulo_inclinacao(cinza: np.ndarray) -> float:
-    """Estima a inclinação angular da placa (-45° a +45°) usando Hough Lines e contornos."""
+    """Estima a inclinação angular da placa (-45° a +45°) usando pico de histograma Hough e contornos."""
     h, w = cinza.shape[:2]
     if h < 10 or w < 20:
         return 0.0
@@ -133,14 +133,36 @@ def estimar_angulo_inclinacao(cinza: np.ndarray) -> float:
     if linhas is not None:
         for linha in linhas:
             lx1, ly1, lx2, ly2 = linha[0]
+            # Ignora bordas artificiais do recorte da imagem
+            if (ly1 <= 3 and ly2 <= 3) or (ly1 >= h - 4 and ly2 >= h - 4):
+                continue
+            if (lx1 <= 3 and lx2 <= 3) or (lx1 >= w - 4 and lx2 >= w - 4):
+                continue
+
             comp = float(np.hypot(lx2 - lx1, ly2 - ly1))
             ang = float(np.degrees(np.arctan2(ly2 - ly1, lx2 - lx1)))
+            if ang > 45.0:
+                ang -= 90.0
+            elif ang < -45.0:
+                ang += 90.0
+
             if -45.0 <= ang <= 45.0:
                 angulos.append(ang)
                 pesos.append(comp)
 
     if angulos and sum(pesos) > 0:
-        return float(np.average(angulos, weights=pesos))
+        # Agrupa em bins de 2 graus para encontrar a moda (orientação dominante)
+        # Evita cancelamento mútuo entre bordas da placa e traços inclinados de caracteres
+        bins = np.arange(-45, 47, 2)
+        hist, bin_edges = np.histogram(angulos, bins=bins, weights=pesos)
+        idx_pico = int(np.argmax(hist))
+        ang_pico = (bin_edges[idx_pico] + bin_edges[idx_pico + 1]) / 2.0
+
+        proximas = [a for a, p in zip(angulos, pesos) if abs(a - ang_pico) <= 4.0]
+        pesos_prox = [p for a, p in zip(angulos, pesos) if abs(a - ang_pico) <= 4.0]
+        if proximas and sum(pesos_prox) > 0:
+            return float(np.average(proximas, weights=pesos_prox))
+        return float(ang_pico)
 
     # 3. Fallback: minAreaRect no contorno claro da placa
     _, thr = cv2.threshold(cinza_clahe, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -237,8 +259,78 @@ def corrigir_inclinacao(
     return corrigida, angulo
 
 
+def encontrar_vertices_placa_roi(roi: np.ndarray) -> np.ndarray | None:
+    """Detecta os 4 vértices do contorno quadrilátero da placa veicular dentro do ROI recortado."""
+    if roi is None or roi.size == 0:
+        return None
+    h, w = roi.shape[:2]
+    if h < 20 or w < 40:
+        return None
+
+    cinza = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY) if roi.ndim == 3 else roi.copy()
+    clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8)).apply(cinza)
+
+    # Teste de parâmetros para detecção robusta de contornos quadriláteros
+    tentativas = [(50, 150, (5, 5)), (30, 180, (3, 3)), (20, 100, (5, 5))]
+    for c_min, c_max, k_size in tentativas:
+        edges = cv2.Canny(clahe, c_min, c_max)
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, k_size)
+        closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
+        contornos, _ = cv2.findContours(closed, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+        for c in sorted(contornos, key=cv2.contourArea, reverse=True):
+            area = cv2.contourArea(c)
+            if area < (h * w * 0.20):
+                continue
+            peri = cv2.arcLength(c, True)
+            for eps in [0.04, 0.03, 0.05, 0.025]:
+                aprox = cv2.approxPolyDP(c, eps * peri, True)
+                if len(aprox) == 4 and cv2.isContourConvex(aprox):
+                    pts = aprox.reshape(4, 2).astype(np.float32)
+                    lados = [
+                        float(np.hypot(pts[i][0] - pts[(i + 1) % 4][0], pts[i][1] - pts[(i + 1) % 4][1]))
+                        for i in range(4)
+                    ]
+                    larg_media = (lados[0] + lados[2]) / 2.0
+                    alt_media = (lados[1] + lados[3]) / 2.0
+                    if larg_media < alt_media:
+                        larg_media, alt_media = alt_media, larg_media
+                    aspecto = larg_media / max(1.0, alt_media)
+                    if 1.2 <= aspecto <= 5.5:
+                        return pts
+    return None
+
+
+def verificar_distorcao_geometrica(
+    pts: np.ndarray, threshold_graus: float = 2.5
+) -> tuple[bool, float, float]:
+    """Verifica se o quadrilátero possui inclinação ou distorção de perspectiva significativa."""
+    pts = pts.reshape(4, 2).astype(np.float32)
+    soma = pts.sum(axis=1)
+    diff = np.diff(pts, axis=1)
+
+    sup_esq = pts[np.argmin(soma)]
+    inf_dir = pts[np.argmax(soma)]
+    sup_dir = pts[np.argmin(diff)]
+    inf_esq = pts[np.argmax(diff)]
+
+    ang_topo = np.degrees(np.arctan2(sup_dir[1] - sup_esq[1], sup_dir[0] - sup_esq[0]))
+    ang_base = np.degrees(np.arctan2(inf_dir[1] - inf_esq[1], inf_dir[0] - inf_esq[0]))
+    inc_h = (abs(ang_topo) + abs(ang_base)) / 2.0
+
+    ang_esq = np.degrees(np.arctan2(inf_esq[0] - sup_esq[0], inf_esq[1] - sup_esq[1]))
+    ang_dir = np.degrees(np.arctan2(inf_dir[0] - sup_dir[0], inf_dir[1] - sup_dir[1]))
+    cis_v = (abs(ang_esq) + abs(ang_dir)) / 2.0
+
+    distorcido = (inc_h >= threshold_graus) or (cis_v >= threshold_graus)
+    return distorcido, float(inc_h), float(cis_v)
+
+
 def corrigir_perspectiva(
-    imagem: np.ndarray, vertices: np.ndarray, largura: int = 400, altura: int = 130
+    imagem: np.ndarray,
+    vertices: np.ndarray,
+    largura: int | None = None,
+    altura: int = 130,
 ) -> np.ndarray:
     """Aplica transformação de perspectiva a partir de 4 vértices para um retângulo padronizado."""
     # Ordena vértices: sup-esq, sup-dir, inf-dir, inf-esq
@@ -251,6 +343,22 @@ def corrigir_perspectiva(
     sup_dir = pts[np.argmin(diff)]
     inf_esq = pts[np.argmax(diff)]
 
+    if largura is None or largura <= 0:
+        larg_topo = np.hypot(sup_dir[0] - sup_esq[0], sup_dir[1] - sup_esq[1])
+        larg_base = np.hypot(inf_dir[0] - inf_esq[0], inf_dir[1] - inf_esq[1])
+        larg_max = max(larg_topo, larg_base)
+
+        alt_esq = np.hypot(inf_esq[0] - sup_esq[0], inf_esq[1] - sup_esq[1])
+        alt_dir = np.hypot(inf_dir[0] - sup_dir[0], inf_dir[1] - sup_dir[1])
+        alt_max = max(alt_esq, alt_dir)
+
+        aspecto = larg_max / max(1.0, alt_max)
+        # Se aspecto < 2.2, houve escorço acentuado por ângulo lateral.
+        # Restaura proporção padrão de placas veiculares brasileiras (~3.08)
+        if aspecto < 2.2:
+            aspecto = 3.08
+        largura = int(altura * aspecto)
+
     origem = np.array([sup_esq, sup_dir, inf_dir, inf_esq], dtype=np.float32)
     destino = np.array(
         [[0, 0], [largura - 1, 0], [largura - 1, altura - 1], [0, altura - 1]],
@@ -258,4 +366,4 @@ def corrigir_perspectiva(
     )
 
     matriz = cv2.getPerspectiveTransform(origem, destino)
-    return cv2.warpPerspective(imagem, matriz, (largura, altura))
+    return cv2.warpPerspective(imagem, matriz, (largura, altura), flags=cv2.INTER_CUBIC)
