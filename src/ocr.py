@@ -12,8 +12,33 @@ from src.config import obter_caminho_tesseract
 from src.postprocess import limpar_texto, validar_formato
 from src.segmentation import montar_faixa_caracteres
 
-# Configuração base de caracteres permitidos para placas
-CONFIG_BASE = "--oem 3 --psm {psm} -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+# Configuração base do Tesseract sem heurísticas de dicionário linguístico (avaliação puramente visual)
+CONFIG_BASE = (
+    "--oem 3 --psm {psm} "
+    "-c load_system_dawg=0 "
+    "-c load_freq_dawg=0 "
+    "-c load_punc_dawg=0 "
+    "-c load_number_dawg=0 "
+    "-c load_unambig_dawg=0 "
+    "-c load_bigram_dawg=0 "
+    "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+)
+
+
+def combinar_por_votacao(candidatos: list[str]) -> str | None:
+    """Aplica votação por maioria caractere a caractere para candidatos de 7 caracteres."""
+    validos = [c for c in candidatos if len(c) == 7]
+    if not validos:
+        return None
+    if len(validos) == 1:
+        return validos[0]
+
+    resultado = []
+    for pos in range(7):
+        votos = [c[pos] for c in validos]
+        mais_votado = collections.Counter(votos).most_common(1)[0][0]
+        resultado.append(mais_votado)
+    return "".join(resultado)
 
 
 def recortar_miolo_placa(
@@ -98,35 +123,55 @@ def reconhecer_placa(
         roi_miolo_cinza = recortar_miolo_placa(roi_cinza)
 
         if not robusta:
-            candidatos_diretos: list[str] = []
+            candidatos_validos: list[str] = []
+            todos_candidatos_7: list[str] = []
 
-            # 1. Prioridade Absoluta: Busca por formato diretamente válido (Mercosul ou Antigo)
-            # Avaliamos o miolo (que preserva o anti-aliasing nativo da placa sem molduras ou QR code)
-            for img_cand, psm in [
-                (roi_miolo, 8),
-                (roi_miolo, psm_padrao),
-                (roi_miolo_cinza, 8),
-                (roi_miolo, 13),
-            ]:
-                txt = executar_tesseract(img_cand, psm=psm)
-                if txt:
-                    if not modo_livre and validar_formato(txt) in ("mercosul", "antigo"):
-                        return txt, 0.99, None
-                    candidatos_diretos.append(txt)
-
-            # Avalia também a faixa dos caracteres segmentados (caso existam 7)
+            # 1. Prioridade Absoluta: Faixa de Caracteres Segmentados
+            # Se a etapa anterior isolou 7 caracteres limpos, eles estão isentos de
+            # moldura, parafusos, QR code e vinhetas
             if faixa is not None:
-                for psm in [8, 7]:
-                    txt = executar_tesseract(faixa, psm=psm)
+                for psm in [psm_padrao, 6, 11]:
+                    try:
+                        txt = executar_tesseract(faixa, psm=psm)
+                        if txt:
+                            if not modo_livre and validar_formato(txt) in ("mercosul", "antigo"):
+                                candidatos_validos.append(txt)
+                            if len(txt) == 7:
+                                todos_candidatos_7.append(txt)
+                    except Exception:
+                        pass
+
+            # 2. Recortes de Miolo (Cinza nativo primeiro, depois CLAHE)
+            # O cinza preserva o anti-aliasing natural da fonte sem sombras exageradas
+            for img_cand, psm in [
+                (roi_miolo_cinza, psm_padrao),
+                (roi_miolo_cinza, 8),
+                (roi_miolo, psm_padrao),
+                (roi_miolo, 8),
+            ]:
+                try:
+                    txt = executar_tesseract(img_cand, psm=psm)
                     if txt:
                         if not modo_livre and validar_formato(txt) in ("mercosul", "antigo"):
-                            return txt, 0.98, None
-                        candidatos_diretos.append(txt)
+                            candidatos_validos.append(txt)
+                        if len(txt) == 7:
+                            todos_candidatos_7.append(txt)
+                except Exception:
+                    pass
 
-            # 2. Se nenhum foi 100% perfeito de primeira, seleciona candidato de tamanho 7
-            candidatos_7 = [c for c in candidatos_diretos if len(c) == 7]
-            if candidatos_7:
-                return candidatos_7[0], 0.95, None
+            # Consenso entre palpites diretamente válidos
+            if candidatos_validos:
+                consenso = combinar_por_votacao(candidatos_validos)
+                if consenso and (modo_livre or validar_formato(consenso) in ("mercosul", "antigo")):
+                    return consenso, 0.99, None
+                return candidatos_validos[0], 0.98, None
+
+            # Consenso entre palpites de 7 caracteres
+            if todos_candidatos_7:
+                consenso_7 = combinar_por_votacao(todos_candidatos_7)
+                if consenso_7:
+                    return consenso_7, 0.95, None
+                return todos_candidatos_7[0], 0.92, None
 
             # 3. Fallback: Leitura clássica do ROI integral
             texto = executar_tesseract(roi_clahe, psm=psm_padrao)
@@ -146,7 +191,7 @@ def reconhecer_placa(
 
         # Tentativas com faixa segmentada
         if faixa is not None:
-            for psm in [8, 7, 13]:
+            for psm in [psm_padrao, 6, 7, 8, 11, 13]:
                 try:
                     res = executar_tesseract(faixa, psm=psm)
                     if res:
@@ -156,14 +201,15 @@ def reconhecer_placa(
 
         # Tentativas com miolo e variações do ROI
         variacoes = [
-            ("Miolo", roi_miolo),
+            ("MioloCinza", roi_miolo_cinza),
+            ("MioloCLAHE", roi_miolo),
             ("CLAHE", roi_clahe),
             ("Binarizada", binarizada),
             ("Cinza", roi_cinza),
         ]
 
         for _, img_var in variacoes:
-            for psm in [8, 7, 13]:
+            for psm in [psm_padrao, 6, 7, 8, 13]:
                 try:
                     res = executar_tesseract(img_var, psm=psm)
                     if res:
@@ -174,15 +220,22 @@ def reconhecer_placa(
         if not leituras:
             return "", None, "Nenhum caractere reconhecido nas tentativas"
 
-        # 1. Prioridade: se alguma leitura já for formato brasileiro válido
+        # 1. Prioridade: candidatos diretamente válidos combinados por consenso
         if not modo_livre:
-            for leitura in leituras:
-                if validar_formato(leitura) in ("mercosul", "antigo"):
-                    return leitura, 1.0, None
+            validas = [cand for cand in leituras if validar_formato(cand) in ("mercosul", "antigo")]
+            if validas:
+                consenso_valido = combinar_por_votacao(validas)
+                if consenso_valido and validar_formato(consenso_valido) in ("mercosul", "antigo"):
+                    return consenso_valido, 1.0, None
+                mais_comum = collections.Counter(validas).most_common(1)[0][0]
+                return mais_comum, 0.99, None
 
-        # 2. Prioridade: candidato de tamanho 7 mais frequente (consenso)
+        # 2. Prioridade: candidato de tamanho 7 com votação por maioria
         candidatos_7 = [cand for cand in leituras if len(cand) == 7]
         if candidatos_7:
+            consenso_7 = combinar_por_votacao(candidatos_7)
+            if consenso_7:
+                return consenso_7, 0.95, None
             mais_comum = collections.Counter(candidatos_7).most_common(1)[0][0]
             return mais_comum, 0.9, None
 

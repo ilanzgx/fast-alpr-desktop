@@ -57,9 +57,12 @@ def segmentar_caracteres(
 
 
 def normalizar_caractere(
-    char_crop: np.ndarray, largura: int = 32, altura: int = 48, margem: int = 4
+    char_crop: np.ndarray, largura: int = 40, altura: int = 60, margem: int = 5
 ) -> np.ndarray:
-    """Redimensiona o caractere mantendo a proporção e adiciona margem fixa centralizada."""
+    """Redimensiona o caractere mantendo a proporção e adiciona margem fixa centralizada.
+    
+    Utiliza interpolação cúbica com limiarização binária para evitar artefatos serrilhados.
+    """
     h, w = char_crop.shape[:2]
     if h == 0 or w == 0:
         return np.zeros((altura, largura), dtype=np.uint8)
@@ -69,7 +72,8 @@ def normalizar_caractere(
     novo_w = max(1, int(w * escala))
     novo_h = max(1, int(h * escala))
 
-    redim = cv2.resize(char_crop, (novo_w, novo_h), interpolation=cv2.INTER_NEAREST)
+    redim = cv2.resize(char_crop, (novo_w, novo_h), interpolation=cv2.INTER_CUBIC)
+    _, redim = cv2.threshold(redim, 127, 255, cv2.THRESH_BINARY)
 
     tela = np.zeros((altura, largura), dtype=np.uint8)
     topo = (altura - novo_h) // 2
@@ -81,9 +85,9 @@ def normalizar_caractere(
 
 def montar_faixa_caracteres(
     caracteres: list[np.ndarray],
-    espacamento: int = 10,
-    margem_v: int = 16,
-    margem_h: int = 16,
+    espacamento: int = 14,
+    margem_v: int = 20,
+    margem_h: int = 24,
 ) -> np.ndarray | None:
     """Monta uma imagem horizontal com os caracteres segmentados dispostos sequencialmente.
     
