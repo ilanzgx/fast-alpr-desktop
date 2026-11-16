@@ -14,9 +14,13 @@ QWidget {
     color: #0F172A;
 }
 
-QScrollArea {
+QScrollArea, QScrollArea::viewport {
     border: none;
-    background-color: transparent;
+    background-color: #F8FAFC;
+}
+
+QWidget#painel_controles_conteudo, QWidget#painel_direito_conteudo {
+    background-color: #F8FAFC;
 }
 
 /* =========================================================================
@@ -80,7 +84,7 @@ QGroupBox {
     border: 1px solid #E2E8F0;
     border-radius: 10px;
     margin-top: 14px;
-    padding: 16px 12px 12px 12px;
+    padding: 14px 10px 10px 10px;
     font-weight: 600;
 }
 
@@ -196,6 +200,7 @@ QComboBox QAbstractItemView {
     border: 1px solid #CBD5E1;
     border-radius: 6px;
     padding: 4px;
+    color: #1E293B;
     selection-background-color: #EFF6FF;
     selection-color: #1D4ED8;
     outline: none;
@@ -223,6 +228,11 @@ QSpinBox:focus, QDoubleSpinBox:focus {
 /* =========================================================================
    6. CONTROLES DESLIZANTES (SLIDERS)
    ========================================================================= */
+QSlider:horizontal {
+    min-height: 24px;
+    height: 24px;
+}
+
 QSlider::groove:horizontal {
     height: 6px;
     background: #E2E8F0;
@@ -239,8 +249,9 @@ QSlider::handle:horizontal {
     border: 2px solid #2563EB;
     width: 16px;
     height: 16px;
-    margin: -5px 0;
-    border-radius: 8px;
+    margin-top: -6px;
+    margin-bottom: -6px;
+    border-radius: 9px;
 }
 
 QSlider::handle:horizontal:hover {
@@ -291,6 +302,10 @@ QStatusBar {
     padding: 6px 12px;
 }
 
+QSplitter {
+    background-color: #F8FAFC;
+}
+
 QSplitter::handle {
     background-color: #E2E8F0;
     width: 2px;
@@ -326,8 +341,8 @@ QLabel#painel_imagem_viewport_vazio {
 }
 
 QLabel#painel_imagem_viewport_ativo {
-    background-color: #090D16;
-    border: 1px solid #E2E8F0;
+    background-color: #0F172A;
+    border: 1px solid #CBD5E1;
     border-radius: 7px;
 }
 

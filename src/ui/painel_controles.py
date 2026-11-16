@@ -40,10 +40,12 @@ class PainelControles(QWidget):
         # ScrollArea para permitir rolar em telas menores
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         conteudo = QWidget()
+        conteudo.setObjectName("painel_controles_conteudo")
         self._layout_conteudo = QVBoxLayout(conteudo)
-        self._layout_conteudo.setSpacing(12)
-        self._layout_conteudo.setContentsMargins(12, 12, 12, 12)
+        self._layout_conteudo.setSpacing(10)
+        self._layout_conteudo.setContentsMargins(8, 8, 8, 8)
 
         self._criar_grupo_entrada()
         self._criar_grupo_deteccao()
@@ -58,6 +60,8 @@ class PainelControles(QWidget):
     def _criar_grupo_entrada(self) -> None:
         grupo = QGroupBox("1. Entrada da Imagem")
         layout = QVBoxLayout(grupo)
+        layout.setContentsMargins(8, 12, 8, 8)
+        layout.setSpacing(6)
 
         self._btn_carregar = QPushButton("Carregar Imagem...")
         self._btn_carregar.setMinimumHeight(36)
@@ -75,6 +79,8 @@ class PainelControles(QWidget):
     def _criar_grupo_deteccao(self) -> None:
         grupo = QGroupBox("2. Detecção de Placa")
         layout = QVBoxLayout(grupo)
+        layout.setContentsMargins(8, 12, 8, 8)
+        layout.setSpacing(6)
 
         # Método
         layout.addWidget(QLabel("Método:"))
@@ -87,6 +93,7 @@ class PainelControles(QWidget):
         self._widget_yolo = QWidget()
         layout_yolo = QVBoxLayout(self._widget_yolo)
         layout_yolo.setContentsMargins(0, 0, 0, 0)
+        layout_yolo.setSpacing(6)
 
         self._slider_conf, self._spin_conf = self._criar_slider_decimal(
             "Confiança mínima:", 0.05, 0.95, 0.25, 0.05, layout_yolo
@@ -100,6 +107,7 @@ class PainelControles(QWidget):
         self._widget_classico = QWidget()
         layout_classico = QVBoxLayout(self._widget_classico)
         layout_classico.setContentsMargins(0, 0, 0, 0)
+        layout_classico.setSpacing(6)
 
         self._slider_canny_min, self._spin_canny_min = self._criar_slider_inteiro(
             "Canny Mínimo:", 0, 255, 30, layout_classico
@@ -115,6 +123,8 @@ class PainelControles(QWidget):
     def _criar_grupo_preprocessamento(self) -> None:
         grupo = QGroupBox("3. Pré-processamento")
         layout = QVBoxLayout(grupo)
+        layout.setContentsMargins(8, 12, 8, 8)
+        layout.setSpacing(6)
 
         # Kernel Gaussiano (ímpares de 1 a 15)
         self._slider_kernel, self._spin_kernel = self._criar_slider_inteiro(
@@ -137,6 +147,7 @@ class PainelControles(QWidget):
         self._widget_adaptativo = QWidget()
         layout_adaptativo = QVBoxLayout(self._widget_adaptativo)
         layout_adaptativo.setContentsMargins(0, 0, 0, 0)
+        layout_adaptativo.setSpacing(6)
 
         self._slider_bloco, self._spin_bloco = self._criar_slider_inteiro(
             "Bloco Adaptativo:", 3, 61, 31, layout_adaptativo, passo=2
@@ -152,6 +163,8 @@ class PainelControles(QWidget):
     def _criar_grupo_ocr(self) -> None:
         grupo = QGroupBox("4. OCR e Pós-processamento")
         layout = QVBoxLayout(grupo)
+        layout.setContentsMargins(8, 12, 8, 8)
+        layout.setSpacing(6)
 
         # Seletor do Motor de OCR
         layout.addWidget(QLabel("Motor de OCR:"))
@@ -165,6 +178,7 @@ class PainelControles(QWidget):
         self._widget_tesseract = QWidget()
         layout_tess = QVBoxLayout(self._widget_tesseract)
         layout_tess.setContentsMargins(0, 0, 0, 0)
+        layout_tess.setSpacing(6)
 
         layout_tess.addWidget(QLabel("PSM (Tesseract):"))
         self._combo_psm = QComboBox()
@@ -214,13 +228,15 @@ class PainelControles(QWidget):
         self, rotulo: str, vmin: int, vmax: int, vpadrao: int, layout_pai: QVBoxLayout, passo: int = 1
     ) -> tuple[QSlider, QSpinBox]:
         layout_rotulo = QHBoxLayout()
+        layout_rotulo.setContentsMargins(0, 0, 0, 0)
+        layout_rotulo.setSpacing(6)
         layout_rotulo.addWidget(QLabel(rotulo))
 
         spin = QSpinBox()
         spin.setRange(vmin, vmax)
         spin.setSingleStep(passo)
         spin.setValue(vpadrao)
-        spin.setFixedWidth(64)
+        spin.setFixedWidth(54)
         spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout_rotulo.addWidget(spin)
         layout_pai.addLayout(layout_rotulo)
@@ -242,13 +258,15 @@ class PainelControles(QWidget):
         self, rotulo: str, vmin: float, vmax: float, vpadrao: float, passo: float, layout_pai: QVBoxLayout
     ) -> tuple[QSlider, QDoubleSpinBox]:
         layout_rotulo = QHBoxLayout()
+        layout_rotulo.setContentsMargins(0, 0, 0, 0)
+        layout_rotulo.setSpacing(6)
         layout_rotulo.addWidget(QLabel(rotulo))
 
         spin = QDoubleSpinBox()
         spin.setRange(vmin, vmax)
         spin.setSingleStep(passo)
         spin.setValue(vpadrao)
-        spin.setFixedWidth(64)
+        spin.setFixedWidth(54)
         spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout_rotulo.addWidget(spin)
         layout_pai.addLayout(layout_rotulo)

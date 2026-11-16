@@ -70,6 +70,7 @@ class JanelaPrincipal(QMainWindow):
         scroll_direito = QScrollArea()
         scroll_direito.setWidgetResizable(True)
         widget_direito = QWidget()
+        widget_direito.setObjectName("painel_direito_conteudo")
         layout_direito = QVBoxLayout(widget_direito)
         layout_direito.setContentsMargins(16, 16, 16, 16)
         layout_direito.setSpacing(14)
@@ -151,8 +152,11 @@ class JanelaPrincipal(QMainWindow):
 
         scroll_direito.setWidget(widget_direito)
         splitter.addWidget(scroll_direito)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 3)
+        self._controles.setMinimumWidth(260)
+        scroll_direito.setMinimumWidth(500)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([330, 950])
 
     def _ao_carregar_imagem(self, caminho: str) -> None:
         try:
