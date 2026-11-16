@@ -95,7 +95,7 @@ class ParametrosPipeline:
     constante_adaptativa: int = 10
 
     # OCR e Pós-processamento (E9-E10)
-    ocr_engine: str = "tesseract"
+    ocr_engine: str = "fast_plate_ocr"  # "fast_plate_ocr" | "tesseract"
     ocr_psm: int = 7
     modo_livre: bool = False
     leitura_robusta: bool = False

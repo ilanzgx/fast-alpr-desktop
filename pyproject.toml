@@ -10,6 +10,7 @@ dependencies = [
     "numpy>=1.26.0,<2.0.0",
     "onnxruntime>=1.16.0",
     "pytesseract>=0.3.10",
+    "fast-plate-ocr>=1.1.0",
 ]
 
 [project.optional-dependencies]

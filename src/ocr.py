@@ -1,15 +1,16 @@
-"""Módulo de Reconhecimento Óptico de Caracteres (OCR) com Tesseract."""
+"""Módulo de Reconhecimento Óptico de Caracteres (OCR) com FastPlateOCR e Tesseract."""
 
 from __future__ import annotations
 
 import collections
+from typing import Any
 
 import cv2
 import numpy as np
 import pytesseract
 
 from src.config import obter_caminho_tesseract
-from src.postprocess import limpar_texto, validar_formato
+from src.postprocess import corrigir_por_posicao, limpar_texto, validar_formato
 from src.segmentation import montar_faixa_caracteres
 
 # Configuração base do Tesseract sem heurísticas de dicionário linguístico (avaliação puramente visual)
@@ -58,6 +59,77 @@ def recortar_miolo_placa(
     return roi[y1:y2, x1:x2]
 
 
+# Cache global para o modelo ONNX FastPlateOCR
+_RECOGNIZER_FASTPLATE: Any | None = None
+
+
+def obter_recognizer_fastplate() -> Any:
+    """Retorna uma instância singleton de LicensePlateRecognizer para inferência rápida."""
+    global _RECOGNIZER_FASTPLATE
+    if _RECOGNIZER_FASTPLATE is None:
+        from fast_plate_ocr import LicensePlateRecognizer
+
+        _RECOGNIZER_FASTPLATE = LicensePlateRecognizer("cct-s-v2-global-model", device="cpu")
+    return _RECOGNIZER_FASTPLATE
+
+
+def verificar_fastplate_disponivel() -> tuple[bool, str]:
+    """Verifica se o pacote fast_plate_ocr está disponível no ambiente."""
+    try:
+        from fast_plate_ocr import LicensePlateRecognizer  # noqa: F401
+
+        return True, "FastPlateOCR disponível"
+    except ImportError:
+        return False, "Pacote 'fast_plate_ocr' não instalado. Execute: uv add fast-plate-ocr"
+    except Exception as e:
+        return False, f"Falha ao carregar FastPlateOCR: {e}"
+
+
+def reconhecer_com_fastplate(
+    roi: np.ndarray,
+    modo_livre: bool = False,
+) -> tuple[str, float | None, str | None]:
+    """Executa o reconhecimento de placa utilizando a rede neural FastPlateOCR (ONNX).
+
+    Espera a imagem recortada da placa (ROI BGR ou tons de cinza).
+    Garante conversão para 3 canais e calcula confiança média dos caracteres.
+
+    Retorna: (texto_bruto, confianca_estimada, mensagem_de_erro)
+    """
+    if roi is None or roi.size == 0 or roi.shape[0] < 5 or roi.shape[1] < 10:
+        return "", None, "ROI da placa inválido ou muito pequeno para FastPlateOCR"
+
+    try:
+        recognizer = obter_recognizer_fastplate()
+    except Exception as e:
+        return "", None, f"Erro ao inicializar FastPlateOCR: {e}"
+
+    # FastPlateOCR exige imagem com 3 canais (H, W, 3)
+    img = roi
+    if img.ndim == 2:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    elif img.ndim == 3 and img.shape[2] == 4:
+        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+
+    try:
+        preds = recognizer.run(img, return_confidence=True)
+        if not preds:
+            return "", None, "Nenhum resultado retornado pelo FastPlateOCR"
+
+        pred = preds[0]
+        texto = limpar_texto(pred.plate)
+
+        confianca: float | None = None
+        if pred.has_confidence and pred.char_probs is not None and len(pred.char_probs) > 0:
+            confianca = float(np.mean(pred.char_probs))
+        elif texto:
+            confianca = 0.95
+
+        return texto, confianca, None
+    except Exception as e:
+        return "", None, f"Erro na inferência FastPlateOCR: {e}"
+
+
 def verificar_tesseract_disponivel() -> tuple[bool, str]:
     """Verifica se o executável do Tesseract está disponível no sistema ou na pasta local."""
     caminho = obter_caminho_tesseract()
@@ -93,6 +165,96 @@ def executar_tesseract(imagem: np.ndarray, psm: int = 7) -> str:
     return limpar_texto(texto)
 
 
+def _estimar_inclinacao_caracteres(caracteres: list[np.ndarray]) -> float:
+    """Estima o cisalhamento (skew) mediano dos caracteres via momentos centrais."""
+    skews: list[float] = []
+    for char_img in caracteres:
+        if char_img is None or char_img.size == 0:
+            continue
+        eh_fundo_escuro = np.mean(char_img) < 128
+        fg = (char_img > 127 if eh_fundo_escuro else char_img < 128).astype(np.uint8) * 255
+        momentos = cv2.moments(fg)
+        if momentos["mu02"] > 1e-2:
+            skews.append(float(momentos["mu11"] / momentos["mu02"]))
+    if not skews:
+        return 0.0
+    return float(np.clip(np.median(skews), -0.35, 0.35))
+
+
+def _deslantar_caractere(char_img: np.ndarray, skew: float) -> np.ndarray:
+    """Corrige o cisalhamento do caractere sem cortar suas extremidades, em fundo claro."""
+    p = cv2.bitwise_not(char_img) if np.mean(char_img) < 128 else char_img.copy()
+    if abs(skew) < 0.04:
+        return p
+
+    hc, wc = p.shape[:2]
+    desloc = int(np.ceil(0.5 * hc * abs(skew)))
+    tela_w = wc + 2 * desloc
+    amplo = cv2.copyMakeBorder(p, 0, 0, desloc, desloc, cv2.BORDER_CONSTANT, value=255)
+    matriz = np.float32([[1.0, -skew, 0.5 * hc * skew], [0.0, 1.0, 0.0]])
+    rot = cv2.warpAffine(
+        amplo,
+        matriz,
+        (tela_w, hc),
+        flags=cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=255,
+    )
+
+    cols = np.where(np.min(rot, axis=0) < 200)[0]
+    if len(cols) > 0:
+        c1 = max(0, int(cols[0]) - 5)
+        c2 = min(tela_w, int(cols[-1]) + 6)
+        if (c2 - c1) >= wc:
+            return rot[:, c1:c2]
+        pad_tot = wc - (c2 - c1)
+        pl = pad_tot // 2
+        return cv2.copyMakeBorder(
+            rot[:, c1:c2], 0, 0, pl, pad_tot - pl, cv2.BORDER_CONSTANT, value=255
+        )
+    return rot
+
+
+def _montar_faixa_deslantada(
+    caracteres: list[np.ndarray], skew: float, escala: float = 0.7
+) -> np.ndarray | None:
+    """Monta faixa horizontal com caracteres deslantados na altura-alvo ideal ao LSTM."""
+    if not caracteres:
+        return None
+
+    des = [_deslantar_caractere(c, skew) for c in caracteres]
+    espacamento = 12
+    altura_c = des[0].shape[0]
+    largura_tot = sum(d.shape[1] for d in des) + (len(des) - 1) * espacamento + 48
+    faixa = np.full((altura_c + 40, largura_tot), 255, dtype=np.uint8)
+
+    x = 24
+    for d in des:
+        w = d.shape[1]
+        faixa[20 : 20 + altura_c, x : x + w] = d
+        x += w + espacamento
+
+    if escala != 1.0:
+        faixa = cv2.resize(faixa, None, fx=escala, fy=escala, interpolation=cv2.INTER_AREA)
+    return faixa
+
+
+def _ler_caracteres_isolados(
+    caracteres: list[np.ndarray], skew: float, escala: float = 0.7
+) -> str:
+    """Lê cada caractere segmentado isoladamente (PSM 10, fallback PSM 8) para evitar viés."""
+    saida: list[str] = []
+    for char_img in caracteres:
+        glifo = _deslantar_caractere(char_img, skew)
+        if escala != 1.0:
+            glifo = cv2.resize(glifo, None, fx=escala, fy=escala, interpolation=cv2.INTER_AREA)
+        txt = executar_tesseract(glifo, psm=10)
+        if not txt:
+            txt = executar_tesseract(glifo, psm=8)
+        saida.append(txt[:1] if txt else "?")
+    return "".join(saida)
+
+
 def reconhecer_placa(
     roi_cinza: np.ndarray,
     roi_clahe: np.ndarray,
@@ -101,34 +263,77 @@ def reconhecer_placa(
     psm_padrao: int = 7,
     robusta: bool = False,
     modo_livre: bool = False,
+    engine: str = "fast_plate_ocr",
+    roi: np.ndarray | None = None,
 ) -> tuple[str, float | None, str | None]:
-    """Executa o OCR na placa recortada, com suporte a modo simples ou multi-tentativa (robusta).
-    
-    Aproveita os caracteres previamente segmentados na Etapa 8 para montar uma faixa
-    limpa isenta de bordas, QR code e parafusos, garantindo máxima acurácia.
-    
+    """Executa o OCR na placa recortada, com suporte a FastPlateOCR (ONNX) ou Tesseract.
+
     Retorna: (texto_bruto, confianca_estimada, mensagem_de_erro)
     """
+    if engine == "fast_plate_ocr":
+        img_alvo = roi if roi is not None else roi_clahe
+        return reconhecer_com_fastplate(img_alvo, modo_livre=modo_livre)
+
     disponivel, info = verificar_tesseract_disponivel()
     if not disponivel:
         return "", None, info
 
     try:
-        faixa = (
-            montar_faixa_caracteres(caracteres)
-            if (caracteres and len(caracteres) == 7)
+        tem_sete_chars = bool(caracteres and len(caracteres) == 7)
+        faixa = montar_faixa_caracteres(caracteres) if tem_sete_chars else None
+        skew_chars = (
+            _estimar_inclinacao_caracteres(caracteres)
+            if (caracteres and len(caracteres) >= 4)
+            else 0.0
+        )
+        faixa_norm = (
+            _montar_faixa_deslantada(caracteres, skew_chars, escala=0.7)
+            if tem_sete_chars
             else None
         )
         roi_miolo = recortar_miolo_placa(roi_clahe)
         roi_miolo_cinza = recortar_miolo_placa(roi_cinza)
 
+        txt_faixa_norm = ""
+        if faixa_norm is not None:
+            try:
+                txt_faixa_norm = executar_tesseract(faixa_norm, psm=psm_padrao)
+            except Exception:
+                txt_faixa_norm = ""
+
+        # Leitura por glifo isolado quando os 7 caracteres foram segmentados no modo BR:
+        # evita alucinação sequencial (ex: 4G21 -> 4621 ou G -> GE)
+        if tem_sete_chars and not modo_livre and caracteres is not None:
+            txt_iso = _ler_caracteres_isolados(caracteres, skew_chars, escala=0.7)
+            if "?" in txt_iso and len(txt_faixa_norm) == 7:
+                mesclado = [
+                    (txt_faixa_norm[idx] if ch == "?" else ch)
+                    for idx, ch in enumerate(txt_iso)
+                ]
+                txt_iso = "".join(mesclado)
+
+            if "?" not in txt_iso:
+                pos_iso = corrigir_por_posicao(txt_iso, modo_livre=False)
+                if pos_iso.valido:
+                    if (
+                        len(txt_faixa_norm) == 7
+                        and validar_formato(txt_faixa_norm) in ("mercosul", "antigo")
+                        and txt_faixa_norm == pos_iso.texto_final
+                    ):
+                        return txt_faixa_norm, 1.0 if robusta else 0.99, None
+                    return txt_iso, 0.99 if robusta else 0.98, None
+
         if not robusta:
             candidatos_validos: list[str] = []
             todos_candidatos_7: list[str] = []
 
-            # 1. Prioridade Absoluta: Faixa de Caracteres Segmentados
-            # Se a etapa anterior isolou 7 caracteres limpos, eles estão isentos de
-            # moldura, parafusos, QR code e vinhetas
+            for cand_txt in ([txt_faixa_norm] if txt_faixa_norm else []):
+                if not modo_livre and validar_formato(cand_txt) in ("mercosul", "antigo"):
+                    candidatos_validos.append(cand_txt)
+                if len(cand_txt) == 7:
+                    todos_candidatos_7.append(cand_txt)
+
+            # 1. Faixa de Caracteres Segmentados
             if faixa is not None:
                 for psm in [psm_padrao, 6, 11]:
                     try:
@@ -142,7 +347,6 @@ def reconhecer_placa(
                         pass
 
             # 2. Recortes de Miolo (Cinza nativo primeiro, depois CLAHE)
-            # O cinza preserva o anti-aliasing natural da fonte sem sombras exageradas
             for img_cand, psm in [
                 (roi_miolo_cinza, psm_padrao),
                 (roi_miolo_cinza, 8),
@@ -159,19 +363,20 @@ def reconhecer_placa(
                 except Exception:
                     pass
 
-            # Consenso entre palpites diretamente válidos
             if candidatos_validos:
                 consenso = combinar_por_votacao(candidatos_validos)
                 if consenso and (modo_livre or validar_formato(consenso) in ("mercosul", "antigo")):
                     return consenso, 0.99, None
                 return candidatos_validos[0], 0.98, None
 
-            # Consenso entre palpites de 7 caracteres
             if todos_candidatos_7:
                 consenso_7 = combinar_por_votacao(todos_candidatos_7)
                 if consenso_7:
                     return consenso_7, 0.95, None
                 return todos_candidatos_7[0], 0.92, None
+
+            if modo_livre and txt_faixa_norm:
+                return txt_faixa_norm, 0.90, None
 
             # 3. Fallback: Leitura clássica do ROI integral
             texto = executar_tesseract(roi_clahe, psm=psm_padrao)
@@ -186,18 +391,48 @@ def reconhecer_placa(
 
             return texto, 0.85 if texto else None, None
 
-        # Modo Robusto (Multi-tentativa): gera variações de tratamentos, recortes e PSMs
+        # Modo Robusto (Multi-tentativa): avalia múltiplas faixas, PSMs e variações do ROI
         leituras: list[str] = []
+        leituras_segmentadas: list[str] = []
 
-        # Tentativas com faixa segmentada
+        if txt_faixa_norm:
+            leituras_segmentadas.append(txt_faixa_norm)
+            leituras.append(txt_faixa_norm)
+
+        if faixa_norm is not None:
+            for psm in [6, 7, 8]:
+                if psm == psm_padrao and txt_faixa_norm:
+                    continue
+                try:
+                    res = executar_tesseract(faixa_norm, psm=psm)
+                    if res:
+                        leituras_segmentadas.append(res)
+                        leituras.append(res)
+                except Exception:
+                    pass
+
         if faixa is not None:
             for psm in [psm_padrao, 6, 7, 8, 11, 13]:
                 try:
                     res = executar_tesseract(faixa, psm=psm)
                     if res:
+                        leituras_segmentadas.append(res)
                         leituras.append(res)
                 except Exception:
                     pass
+
+        if not modo_livre:
+            validas_seg = [
+                cand
+                for cand in leituras_segmentadas
+                if validar_formato(cand) in ("mercosul", "antigo")
+            ]
+            if validas_seg and tem_sete_chars:
+                consenso_seg = combinar_por_votacao(validas_seg)
+                if consenso_seg and validar_formato(consenso_seg) in ("mercosul", "antigo"):
+                    return consenso_seg, 1.0, None
+                mais_comum_seg = collections.Counter(validas_seg).most_common(1)[0][0]
+                return mais_comum_seg, 0.99, None
 
         # Tentativas com miolo e variações do ROI
         variacoes = [

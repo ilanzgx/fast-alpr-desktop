@@ -14,13 +14,16 @@ from src.ocr import reconhecer_placa
 from src.postprocess import corrigir_por_posicao
 from src.preprocessing import (
     ampliar_roi,
+    ampliar_roi_com_escala,
     aplicar_clahe,
     binarizar,
     converter_cinza,
     corrigir_inclinacao,
     corrigir_perspectiva,
+    detectar_vertices_pos_rotacao,
     encontrar_vertices_placa_roi,
     recortar_roi,
+    recortar_roi_com_offset,
     suavizar_gauss,
     verificar_distorcao_geometrica,
 )
@@ -113,31 +116,67 @@ def executar_pipeline(imagem: np.ndarray, params: ParametrosPipeline) -> Resulta
     # -------------------------------------------------------------
     t0_prep = time.perf_counter()
     if params.metodo == "classico" and vertices is not None:
-        roi = corrigir_perspectiva(imagem, vertices, largura=400, altura=130)
+        roi = corrigir_perspectiva(
+            imagem, vertices, largura=400, altura=130, margem_saida=0.09
+        )
     else:
-        roi = recortar_roi(imagem, caixa, margem=params.margem_roi)
-        roi = ampliar_roi(roi, altura_alvo=120)
+        # Extrai ROI com contexto expandido para permitir zoom-out real após retificação/rotação
+        margem_ctx = max(params.margem_roi, 0.20)
+        roi_ctx, (ox, oy) = recortar_roi_com_offset(imagem, caixa, margem=margem_ctx)
+        caixa_em_ctx = Caixa(
+            x1=caixa.x1 - ox,
+            y1=caixa.y1 - oy,
+            x2=caixa.x2 - ox,
+            y2=caixa.y2 - oy,
+            confianca=caixa.confianca,
+        )
+        roi_ctx_amp, escala_ctx = ampliar_roi_com_escala(roi_ctx, altura_alvo=160)
+        caixa_ctx_amp = Caixa(
+            x1=int(round(caixa_em_ctx.x1 * escala_ctx)),
+            y1=int(round(caixa_em_ctx.y1 * escala_ctx)),
+            x2=int(round(caixa_em_ctx.x2 * escala_ctx)),
+            y2=int(round(caixa_em_ctx.y2 * escala_ctx)),
+            confianca=caixa.confianca,
+        )
 
-        # Detecção e retificação de perspectiva para placas diagonais/em ângulo (E3)
-        vertices_roi = encontrar_vertices_placa_roi(roi)
-        if vertices_roi is not None:
-            distorcido, _, _ = verificar_distorcao_geometrica(vertices_roi, threshold_graus=2.5)
+        perspectiva_aplicada = False
+        vertices_ctx = encontrar_vertices_placa_roi(roi_ctx_amp, caixa_esperada=caixa_ctx_amp)
+        vertices_orig: np.ndarray | None = None
+        if vertices_ctx is not None:
+            vertices_orig = (vertices_ctx / escala_ctx) + np.array([ox, oy], dtype=np.float32)
+        else:
+            # Desinclina primeiro placas escorçadas para detectar os 4 cantos sem corte da caixa
+            vertices_orig = detectar_vertices_pos_rotacao(
+                roi_ctx_amp, caixa_ctx_amp, escala_ctx, ox, oy
+            )
+
+        if vertices_orig is not None:
+            distorcido, _, _ = verificar_distorcao_geometrica(vertices_orig, threshold_graus=2.5)
             if distorcido:
-                roi = corrigir_perspectiva(roi, vertices_roi, largura=None, altura=130)
+                # Warp único na imagem original preserva pixels reais na margem zoom-out
+                roi = corrigir_perspectiva(
+                    imagem, vertices_orig, largura=None, altura=130, margem_saida=0.09
+                )
+                perspectiva_aplicada = True
+
+        if not perspectiva_aplicada:
+            roi_rot, angulo = corrigir_inclinacao(
+                roi_ctx_amp,
+                margem_zoom_out=0.09,
+                caixa_interna=caixa_ctx_amp,
+            )
+            if abs(angulo) >= 0.8:
+                roi = roi_rot
+            else:
+                roi = recortar_roi(imagem, caixa, margem=params.margem_roi)
 
     # Ampliação do ROI para dimensões confortáveis para OCR
-    roi = ampliar_roi(roi, altura_alvo=120)
+    roi = ampliar_roi(roi, altura_alvo=130)
 
     # -------------------------------------------------------------
     # ETAPAS 4 a 7: PRÉ-PROCESSAMENTO (E4 a E7)
     # -------------------------------------------------------------
     roi_cinza = converter_cinza(roi)
-
-    # Correção de rotação residual via Hough se ainda houver inclinação
-    if params.metodo == "yolo":
-        roi_cinza, angulo = corrigir_inclinacao(roi_cinza)
-        if abs(angulo) >= 2.0:
-            roi_cinza = ampliar_roi(roi_cinza, altura_alvo=120)
 
     # Suavização Gaussiana
     suave = suavizar_gauss(roi_cinza, k=params.kernel_gauss)
@@ -172,6 +211,8 @@ def executar_pipeline(imagem: np.ndarray, params: ParametrosPipeline) -> Resulta
         psm_padrao=params.ocr_psm,
         robusta=params.leitura_robusta,
         modo_livre=params.modo_livre,
+        engine=params.ocr_engine,
+        roi=roi,
     )
     tempos["ocr"] = (time.perf_counter() - t0_ocr) * 1000.0
 
