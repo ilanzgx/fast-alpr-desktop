@@ -53,18 +53,21 @@ jobs:
             --collect-all "onnxruntime" `
             src/app.py
 
-      - name: Compactar Executável em ZIP
+      - name: Organizar e Compactar Artefatos do Windows
         shell: pwsh
         run: |
-          Compress-Archive -Path dist/ALPR-Placas.exe -DestinationPath dist/ALPR-Placas-windows-x64.zip -Force
+          $ver = "${{ github.ref_name }}"
+          $baseName = "ALPR-Placas-windows-x64-$ver"
+          Copy-Item "dist/ALPR-Placas.exe" "dist/$baseName.exe"
+          Compress-Archive -Path "dist/$baseName.exe" -DestinationPath "dist/$baseName.zip" -Force
 
       - name: Upload de artefatos Windows
         uses: actions/upload-artifact@v4
         with:
           name: windows-artifacts
           path: |
-            dist/ALPR-Placas.exe
-            dist/ALPR-Placas-windows-x64.zip
+            dist/ALPR-Placas-windows-x64-*.exe
+            dist/ALPR-Placas-windows-x64-*.zip
           retention-days: 1
 
   build-linux:
@@ -169,20 +172,25 @@ jobs:
           wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
           chmod +x appimagetool
           ./appimagetool --appimage-extract
-          ARCH=x86_64 ./squashfs-root/AppRun --no-appstream AppDir dist/ALPR-Placas-x86_64.AppImage
-          chmod +x dist/ALPR-Placas-x86_64.AppImage
+          VER="${{ github.ref_name }}"
+          BASE_NAME="ALPR-Placas-linux-x64-${VER}"
+          ARCH=x86_64 ./squashfs-root/AppRun --no-appstream AppDir "dist/${BASE_NAME}.AppImage"
+          chmod +x "dist/${BASE_NAME}.AppImage"
 
       - name: Compactar Binário Linux em Tarball
         run: |
-          tar -czf dist/ALPR-Placas-linux-x64.tar.gz -C dist ALPR-Placas
+          VER="${{ github.ref_name }}"
+          BASE_NAME="ALPR-Placas-linux-x64-${VER}"
+          cp dist/ALPR-Placas "dist/${BASE_NAME}"
+          tar -czf "dist/${BASE_NAME}.tar.gz" -C dist "${BASE_NAME}"
 
       - name: Upload de artefatos Linux
         uses: actions/upload-artifact@v4
         with:
           name: linux-artifacts
           path: |
-            dist/ALPR-Placas-x86_64.AppImage
-            dist/ALPR-Placas-linux-x64.tar.gz
+            dist/ALPR-Placas-linux-x64-*.AppImage
+            dist/ALPR-Placas-linux-x64-*.tar.gz
           retention-days: 1
 
   publish-release:

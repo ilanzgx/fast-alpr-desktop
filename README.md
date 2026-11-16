@@ -1,10 +1,10 @@
-# Reconhecimento de Placas Veiculares (ALPR)
+# Fast ALPR Desktop — Reconhecimento de Placas Veiculares
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![uv](https://img.shields.io/badge/managed%20by-uv-261230.svg)](https://docs.astral.sh/uv/)
 [![Qt 6](https://img.shields.io/badge/GUI-PySide6-41CD52.svg)](https://wiki.qt.io/Qt_for_Python)
 [![ONNX Runtime](https://img.shields.io/badge/Inference-ONNX%20Runtime-005CED.svg)](https://onnxruntime.ai/)
-[![CI](https://github.com/ilanzgx/leitura-placa/actions/workflows/ci.yml/badge.svg)](https://github.com/ilanzgx/leitura-placa/actions/workflows/ci.yml)
+[![CI](https://github.com/ilanzgx/fast-alpr-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/ilanzgx/fast-alpr-desktop/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Aplicação desktop profissional e didática para **Reconhecimento Automático de Placas Veiculares (ALPR — *Automatic License Plate Recognition*)**, desenvolvida em Python 3.12 com interface gráfica moderna em **PySide6 (Qt 6)** e inferência de redes neurais profundas via **ONNX Runtime (CPU)**.
@@ -31,8 +31,8 @@ A ferramenta é **100% offline** (não requer conexão com a internet ou APIs ex
 - **Interface Gráfica Reativa (PySide6):**
   - Execução assíncrona em thread separada (`QThread`), garantindo interface 100% fluida sem travamentos.
   - Abertura maximizada automática no monitor, tema escuro profissional (Fusion/QSS) e controles responsivos.
-- **Distribuição Pronta para Uso:**
-  - Pipeline de Release automatizada que compila o aplicativo em um executável autônomo para Windows (`ALPR-Placas.exe` ~130MB), sem necessidade de instalação do Python pelo usuário final.
+- **Distribuição Multiplataforma Pronta para Uso:**
+  - Pipeline de Release automatizada que compila o aplicativo em executáveis autônomos para Windows (`ALPR-Placas-windows-x64-*.exe`) e Linux (`ALPR-Placas-linux-x64-*.AppImage`), sem necessidade de instalação do Python pelo usuário final.
 
 ---
 
@@ -57,9 +57,13 @@ Avaliação formal realizada sobre o dataset de teste (`data/teste`) com **120 f
 
 ## Como Executar
 
-### Opção 1: Executável Autônomo para Windows (Recomendado)
+### Opção 1: Executáveis Autônomos (Windows e Linux)
 
-Basta baixar o arquivo `ALPR-Placas.exe` ou `ALPR-Placas-windows-x64.zip` na aba de **[Releases do GitHub](../../releases)**.
+Basta baixar o binário correspondente ao seu sistema operacional na aba de **[Releases do GitHub](../../releases)**:
+
+- **Windows (x64):** `ALPR-Placas-windows-x64-v1.0.0.exe` ou `.zip`
+- **Linux (x86_64):** `ALPR-Placas-linux-x64-v1.0.0.AppImage` ou `.tar.gz`
+
 Não é necessário instalar Python, bibliotecas ou compiladores.
 
 ---
@@ -74,8 +78,8 @@ Não é necessário instalar Python, bibliotecas ou compiladores.
 
 1. **Clonar o repositório:**
    ```bash
-   git clone https://github.com/ilannn01/algoritmoeprocessamentodeimagem.git
-   cd algoritmoeprocessamentodeimagem
+   git clone https://github.com/ilanzgx/fast-alpr-desktop.git
+   cd fast-alpr-desktop
    ```
 
 2. **Instalar dependências e sincronizar ambiente:**
@@ -107,15 +111,6 @@ uv run ruff check src tests scripts
 # Executar a avaliação completa de benchmark
 uv run python scripts/avaliar.py
 ```
-
----
-
-## Integração Contínua e Releases (CI/CD)
-
-O repositório conta com workflows configurados no GitHub Actions (`.github/workflows/`):
-
-- **CI (`ci.yml`):** Executa automaticamente a cada `push` ou `pull_request` na branch `main`, validando o código com o linter Ruff.
-- **Release (`release.yml`):** Disparado automaticamente ao enviar uma tag com padrão `v*` (ex: `git tag v1.0.0 && git push origin v1.0.0`). O workflow roda em ambiente Windows, empacota toda a aplicação com o PyInstaller e cria a página de Release no GitHub anexando os binários prontos para download.
 
 ---
 

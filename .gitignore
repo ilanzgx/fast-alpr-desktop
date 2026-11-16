@@ -27,6 +27,7 @@ models/*.pt
 runs/
 *.onnx
 *.pt
+!models/placas.onnx
 data/teste/
 results/figuras/
 

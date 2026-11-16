@@ -1,6 +1,6 @@
 [project]
 name = "alpr-placas"
-version = "1.0.1"
+version = "1.0.0"
 description = "Reconhecimento de placas veiculares offline com PySide6, OpenCV e Redes Neurais ONNX (YOLOv8 + FastPlateOCR)"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
