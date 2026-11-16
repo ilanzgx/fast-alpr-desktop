@@ -38,8 +38,9 @@ Letterbox → inferência ONNX → decodificação → NMS → melhor caixa. Det
 ## E3. Correção de perspectiva e inclinação
 
 - **Método clássico:** com os 4 vértices ordenados (sup-esq, sup-dir, inf-dir, inf-esq), `getPerspectiveTransform` + `warpPerspective` para um retângulo de **400×130 px** (proporção da placa brasileira, 40×13 cm).
-- **Método YOLO:** só há caixa, sem vértices. Estimar a inclinação pelo menor retângulo rotacionado do maior contorno após a binarização (`minAreaRect`) e girar o ROI para alinhar. Se o ângulo for pequeno (< 2°), não corrigir.
-- **Ampliação:** redimensionar o ROI para altura de cerca de 120 px com `INTER_CUBIC`, pois o OCR rende melhor com caracteres maiores.
+- **Método YOLO:** transformada probabilística de Hough (`HoughLinesP`) com comprimento mínimo $\ge 26\%$ da largura e **ponderação quadrática por comprimento ($comprimento^2$)**, garantindo que bordas da placa dominem sobre traços de letras (`A`, `K`, `M`, `R`, `4`, `7`). Rotações menores que 0,8° são descartadas.
+- **Expansão de canvas:** cálculo trigonométrico da nova largura e altura para **não cortar as extremidades da placa**.
+- **Ampliação:** redimensionar o ROI para altura confortável com interpolação bicúbica.
 
 ## E4. Tons de cinza
 
@@ -102,7 +103,8 @@ Ver `06-ocr-pos-processamento.md`.
 | Grade do CLAHE | E6 | 8×8 | 2 a 16 |
 | Modo de limiarização | E7 | Otsu | Otsu / adaptativa |
 | Bloco e constante adaptativa | E7 | 31 / 10 | bloco ímpar de 3 a 61 |
-| Motor e PSM do OCR | E9 | Tesseract / 7 | PSM 6, 7, 8, 13 |
+| Motor de OCR | E9 | FastPlateOCR | CCT Transformer ONNX |
+| Modo Livre | E10 | Desativado | Padrão BR / Internacional |
 
 ## Imagens intermediárias exibidas
 

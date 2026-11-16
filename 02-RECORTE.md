@@ -42,8 +42,11 @@ Quando a placa apresenta apenas inclinação planar (sem distorção de perspect
 
 1. **Estimativa Angular Robusta (`estimar_angulo_inclinacao`)**:
    - Realça o contraste com CLAHE e calcula gradientes com Canny.
-   - Aplica a Transformada Probabilística de Hough (`cv2.HoughLinesP`) restrita ao intervalo de -45° a +45°.
-   - Agrupa as linhas em um histograma angular com passos de 2°, ponderando cada voto pelo comprimento do segmento. O pico do histograma define o ângulo dominante, neutralizando interferências de traços diagonais de caracteres como `X`, `A` e `K`.
+   - Aplica a Transformada Probabilística de Hough (`cv2.HoughLinesP`) restrita ao intervalo de -35° a +35°.
+   - Exige linhas estruturais longas (comprimento mínimo de pelo menos 26% da largura da placa).
+   - Aplica **ponderação quadrática por comprimento ($comprimento^2$)**: garante que bordas longas da chapa da placa dominem decisivamente sobre traços curtos de letras inclinadas (como `A`, `K`, `M`, `R`, `4`, `7`).
+   - Requer que o pico dominante concentre pelo menos 25% do peso total para acionar rotação.
+   - Filtra placas quadradas ou de motos (`aspecto < 1.6`), impedindo rotações espúrias em placas de duas linhas.
 2. **Expansão de Canvas**:
    - A matriz de rotação é recalculada para novas dimensões ($W_{novo} = |H \sin \theta| + |W \cos \theta|$ e $H_{novo} = |H \cos \theta| + |W \sin \theta|$), impedindo o corte geométrico dos vértices da placa.
    - O preenchimento externo utiliza `cv2.BORDER_REPLICATE` para evitar bordas pretas que possam gerar blocos brancos na posterior binarização invertida.

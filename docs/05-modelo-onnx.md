@@ -185,3 +185,17 @@ class DetectorYolo:
 |---------|--------------|
 | Recall da detecção (IoU ≥ 0,5) no teste | ≥ 90% |
 | Tempo de inferência em CPU (640×640) | < 300 ms |
+
+## 8. Segundo Modelo ONNX: FastPlateOCR (CCT Transformer)
+
+Além do YOLO para detecção (E1), o sistema executa um segundo modelo neural em formato ONNX para o reconhecimento óptico de caracteres (E9):
+
+| Propriedade | Detecção da Placa (E1) | OCR de Caracteres (E9) |
+|---|---|---|
+| **Modelo** | YOLOv8 License Plate | FastPlateOCR (`cct-s-v2-global-model`) |
+| **Arquitetura** | CNN Convolucional com Feature Pyramid | Compact Convolutional Transformer (CCT) |
+| **Arquivo Local** | `models/placas.onnx` (~6,2 MB) | `models/ocr/cct_s_v2_global.onnx` (~5,3 MB) |
+| **Configuração** | Embutida no grafo ONNX | `models/ocr/cct_s_v2_global_plate_config.yaml` |
+| **Inferência** | `onnxruntime` (CPU) | `onnxruntime` (CPU) via `fast_plate_ocr` |
+| **Tempo de Execução** | ~230 ms por veículo completo | ~100 ms por placa recortada |
+
