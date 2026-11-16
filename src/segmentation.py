@@ -8,15 +8,15 @@ import numpy as np
 
 def segmentar_caracteres(
     binaria: np.ndarray,
-    altura_min_pct: float = 0.35,
+    altura_min_pct: float = 0.29,
     altura_max_pct: float = 0.95,
     largura_max_pct: float = 0.25,
 ) -> list[np.ndarray]:
     """Segmenta caracteres individuais a partir de uma imagem binarizada.
-    
+
     Espera caracteres brancos (255) sobre fundo preto (0).
-    Filtra componentes conexos por dimensões plausíveis de caracteres de placa
-    e os ordena horizontalmente (esquerda para direita).
+    Filtra componentes conexos por dimensões plausíveis de caracteres de placa,
+    descarta artefatos presos aos cantos do recorte e ordena da esquerda para a direita.
     """
     if binaria is None or binaria.size == 0:
         return []
@@ -33,15 +33,21 @@ def segmentar_caracteres(
 
     candidatos = []
     for i in range(1, num_labels):  # Ignora label 0 (fundo)
-        x = stats[i, cv2.CC_STAT_LEFT]
-        y = stats[i, cv2.CC_STAT_TOP]
-        w = stats[i, cv2.CC_STAT_WIDTH]
-        h = stats[i, cv2.CC_STAT_HEIGHT]
-        area = stats[i, cv2.CC_STAT_AREA]
+        x = int(stats[i, cv2.CC_STAT_LEFT])
+        y = int(stats[i, cv2.CC_STAT_TOP])
+        w = int(stats[i, cv2.CC_STAT_WIDTH])
+        h = int(stats[i, cv2.CC_STAT_HEIGHT])
+        area = int(stats[i, cv2.CC_STAT_AREA])
+
+        toca_lat = x <= 1 or (x + w) >= (w_roi - 1)
+        toca_vert = y <= 1 or (y + h) >= (h_roi - 1)
+        if toca_lat and toca_vert:
+            # Fragmento de moldura/para-choque colado no canto do recorte, nunca um caractere
+            continue
 
         if h_min <= h <= h_max and 3 <= w <= w_max and area >= area_min:
-            # Recorta o caractere da máscara binarizada
-            char_crop = binaria[y : y + h, x : x + w]
+            # Isola apenas a máscara do componente i para evitar vazamento de caracteres vizinhos
+            char_crop = np.where(labels[y : y + h, x : x + w] == i, 255, 0).astype(np.uint8)
             candidatos.append((x, char_crop))
 
     # Ordena da esquerda para a direita pela coordenada x
