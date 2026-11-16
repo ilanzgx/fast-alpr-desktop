@@ -11,9 +11,15 @@ venv/
 .ruff_cache/
 .ipynb_checkpoints/
 
+# PyInstaller output
+dist/
+build/
+*.spec
+
 # Project-specific ignored folders
 trash/
 tools/tesseract/
+models/ocr/
 
 # Data and models (heavy/sensitive files out of version control)
 models/*.onnx

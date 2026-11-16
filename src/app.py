@@ -43,6 +43,8 @@ def main() -> None:
 
     # Ícone da aplicação e barra de tarefas
     caminho_icone = Path(__file__).resolve().parent / "ui" / "assets" / "icone.png"
+    if not caminho_icone.exists() and getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        caminho_icone = Path(sys._MEIPASS) / "src" / "ui" / "assets" / "icone.png"
     if caminho_icone.exists():
         app.setWindowIcon(QIcon(str(caminho_icone)))
 

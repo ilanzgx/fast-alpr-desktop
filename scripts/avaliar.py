@@ -21,7 +21,7 @@ import cv2
 import numpy as np
 
 from src.detection.yolo_onnx import DetectorYolo
-from src.ocr import executar_tesseract, reconhecer_com_fastplate
+from src.ocr import reconhecer_com_fastplate
 from src.postprocess import corrigir_por_posicao
 
 
@@ -110,44 +110,9 @@ def executar_benchmark() -> dict[str, Any]:
             print(f"   Progresso FastPlate: {i}/{total} ({i/total:.0%})", flush=True)
 
     # -------------------------------------------------------------
-    # 2. OCR Isolado: Tesseract OCR (PSM 7 com pré-processamento)
+    # 2. Detecção YOLO ONNX (em imagens/)
     # -------------------------------------------------------------
-    print("\n[2/3] Avaliando Tesseract OCR (PSM 7) em recortes/...", flush=True)
-    tess_exatos = 0
-    tess_cers: list[float] = []
-    tess_tempos: list[float] = []
-    tess_validos = 0
-
-    for i, row in enumerate(gabarito, 1):
-        crop = cv2.imread(str(recortes_dir / row["arquivo"]))
-        esperada = row["placa_limpa"]
-
-        t0 = time.perf_counter()
-        cinza = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(cinza)
-        txt = executar_tesseract(clahe, psm=7)
-        t_ms = (time.perf_counter() - t0) * 1000.0
-        tess_tempos.append(t_ms)
-
-        pred = txt.replace("-", "").strip()
-        pos = corrigir_por_posicao(pred)
-        pred_final = pos.texto_final.replace("-", "").strip()
-
-        if pred_final == esperada:
-            tess_exatos += 1
-        if pos.valido:
-            tess_validos += 1
-
-        cer = levenshtein(pred_final, esperada) / max(len(esperada), 1)
-        tess_cers.append(cer)
-
-        if i % 30 == 0 or i == total:
-            print(f"   Progresso Tesseract: {i}/{total} ({i/total:.0%})", flush=True)
-
-    # -------------------------------------------------------------
-    # 3. Detecção YOLO ONNX (em imagens/)
-    # -------------------------------------------------------------
-    print("\n[3/3] Avaliando Detecção YOLO ONNX em imagens/...", flush=True)
+    print("\n[2/2] Avaliando Detecção YOLO ONNX em imagens/...", flush=True)
     detector = DetectorYolo(caminho_modelo=Path("models/placas.onnx"))
     yolo_iou50 = 0
     yolo_iou75 = 0
@@ -205,12 +170,6 @@ def executar_benchmark() -> dict[str, Any]:
         "fastplate_acuracia_char": 1.0 - float(np.mean(fp_cers)),
         "fastplate_validos": fp_validos / total,
         "fastplate_tempo_medio_ms": float(np.mean(fp_tempos)),
-        "tess_exato": tess_exatos,
-        "tess_taxa_exato": tess_exatos / total,
-        "tess_cer": float(np.mean(tess_cers)),
-        "tess_acuracia_char": 1.0 - float(np.mean(tess_cers)),
-        "tess_validos": tess_validos / total,
-        "tess_tempo_medio_ms": float(np.mean(tess_tempos)),
         "yolo_iou50": yolo_iou50,
         "yolo_taxa_iou50": yolo_iou50 / total,
         "yolo_iou75": yolo_iou75,
@@ -233,20 +192,12 @@ def executar_benchmark() -> dict[str, Any]:
     print("\n" + "=" * 60, flush=True)
     print("                RESULTADOS DO BENCHMARK", flush=True)
     print("=" * 60, flush=True)
-    print("\n--- 1. OCR Isolado (120 Recortes) ---")
-    print("FastPlateOCR (ONNX Neural):")
+    print("\n--- 1. OCR Isolado FastPlateOCR (120 Recortes) ---")
     print(f"  • Acerto Exato:         {metricas['fastplate_exato']}/{total} ({metricas['fastplate_taxa_exato']:.1%})")
     print(f"  • Acurácia de Caractere: {metricas['fastplate_acuracia_char']:.2%}")
     print(f"  • CER Médio:            {metricas['fastplate_cer']:.2%}")
     print(f"  • Formato Válido:       {metricas['fastplate_validos']:.1%}")
     print(f"  • Tempo Médio:          {metricas['fastplate_tempo_medio_ms']:.1f} ms por imagem")
-
-    print("\nTesseract OCR (PSM 7):")
-    print(f"  • Acerto Exato:         {metricas['tess_exato']}/{total} ({metricas['tess_taxa_exato']:.1%})")
-    print(f"  • Acurácia de Caractere: {metricas['tess_acuracia_char']:.2%}")
-    print(f"  • CER Médio:            {metricas['tess_cer']:.2%}")
-    print(f"  • Formato Válido:       {metricas['tess_validos']:.1%}")
-    print(f"  • Tempo Médio:          {metricas['tess_tempo_medio_ms']:.1f} ms por imagem")
 
     print("\n--- 2. Detecção YOLO ONNX (120 Imagens) ---")
     print(f"  • Taxa de Detecção (IoU >= 0.50): {metricas['yolo_iou50']}/{total} ({metricas['yolo_taxa_iou50']:.1%})")

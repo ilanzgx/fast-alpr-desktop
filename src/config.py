@@ -3,20 +3,24 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 
-# Diretórios base do projeto
-ROOT_DIR = Path(__file__).resolve().parent.parent
+# Diretórios base do projeto (suporta execução normal e empacotada via PyInstaller)
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    ROOT_DIR = Path(sys._MEIPASS).resolve()
+else:
+    ROOT_DIR = Path(__file__).resolve().parent.parent
+
 MODELS_DIR = ROOT_DIR / "models"
 DATA_DIR = ROOT_DIR / "data"
 TOOLS_DIR = ROOT_DIR / "tools"
 
 # Caminhos padrão configuráveis
 DEFAULT_ONNX_PATH = MODELS_DIR / "placas.onnx"
-LOCAL_TESSERACT_EXE = TOOLS_DIR / "tesseract" / "tesseract.exe"
 
 
 def obter_caminho_modelo() -> Path:
@@ -25,32 +29,6 @@ def obter_caminho_modelo() -> Path:
     if caminho_env:
         return Path(caminho_env)
     return DEFAULT_ONNX_PATH
-
-
-def obter_caminho_tesseract() -> str | None:
-    """Detecta o executável do Tesseract (local, env ou padrão do sistema)."""
-    # 1. Variável de ambiente explícita
-    if "TESSERACT_CMD" in os.environ:
-        return os.environ["TESSERACT_CMD"]
-
-    # 2. Pasta local tools/tesseract/
-    if LOCAL_TESSERACT_EXE.exists():
-        # Configura TESSDATA_PREFIX automaticamente se a pasta tessdata estiver junto
-        tessdata = LOCAL_TESSERACT_EXE.parent / "tessdata"
-        if tessdata.exists() and "TESSDATA_PREFIX" not in os.environ:
-            os.environ["TESSDATA_PREFIX"] = str(tessdata)
-        return str(LOCAL_TESSERACT_EXE)
-
-    # 3. Caminhos padrão do Windows
-    padroes_windows = [
-        Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
-        Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
-    ]
-    for p in padroes_windows:
-        if p.exists():
-            return str(p)
-
-    return None
 
 
 @dataclass(frozen=True)

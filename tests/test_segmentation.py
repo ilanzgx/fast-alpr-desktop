@@ -1,11 +1,9 @@
-"""Testes unitários de segmentação de caracteres e normalização geométrica para OCR."""
+"""Testes unitários de segmentação de caracteres."""
 
 from __future__ import annotations
 
-import cv2
 import numpy as np
 
-from src.ocr import _deslantar_caractere, _estimar_inclinacao_caracteres
 from src.segmentation import segmentar_caracteres
 
 
@@ -40,29 +38,3 @@ def test_segmentar_caracteres_descarta_fragmentos_de_canto():
 
     chars = segmentar_caracteres(img)
     assert len(chars) == 1
-
-
-def test_deslantar_caractere_corrige_cisalhamento_sem_cortar_altura():
-    # Cria 4 glifos sintéticos (40x60) inclinados com cisalhamento conhecido (~0.25)
-    caracteres: list[np.ndarray] = []
-    for _ in range(4):
-        tile = np.zeros((60, 40), dtype=np.uint8)
-        pts = np.array([[22, 10], [27, 10], [17, 50], [12, 50]], dtype=np.int32)
-        cv2.fillPoly(tile, [pts], 255)
-        caracteres.append(tile)
-
-    skew_estimado = _estimar_inclinacao_caracteres(caracteres)
-    assert abs(skew_estimado) > 0.15
-
-    deslantado = _deslantar_caractere(caracteres[0], skew_estimado)
-    # Altura original mantida e largura nunca reduzida abaixo de 40px
-    assert deslantado.shape[0] == 60
-    assert deslantado.shape[1] >= 40
-    # Polaridade para Tesseract (texto escuro sobre fundo claro)
-    assert float(np.mean(deslantado)) > 200.0
-
-    # Verifica redução expressiva do cisalhamento residual
-    fg_pos = (deslantado < 128).astype(np.uint8) * 255
-    m_pos = cv2.moments(fg_pos)
-    skew_pos = abs(m_pos["mu11"] / m_pos["mu02"])
-    assert skew_pos < 0.06

@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Empacotar Executável e Publicar Release
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: uv sync --dev
+
+      - name: Baixar modelos neurais de referência (YOLO e FastPlateOCR)
+        run: uv run python scripts/baixar_modelo_referencia.py
+
+      - name: Construir Executável com PyInstaller
+        shell: pwsh
+        run: |
+          uv run pyinstaller `
+            --noconsole `
+            --onefile `
+            --name "ALPR-Placas" `
+            --icon "src/ui/assets/icone.ico" `
+            --add-data "src/ui/assets;src/ui/assets" `
+            --add-data "models;models" `
+            --collect-all "fast_plate_ocr" `
+            --collect-all "onnxruntime" `
+            src/app.py
+
+      - name: Compactar Executável em ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/ALPR-Placas.exe -DestinationPath dist/ALPR-Placas-windows-x64.zip -Force
+
+      - name: Publicar Release no GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          make_latest: true
+          files: |
+            dist/ALPR-Placas.exe
+            dist/ALPR-Placas-windows-x64.zip

@@ -1,7 +1,7 @@
 [project]
 name = "alpr-placas"
 version = "0.1.0"
-description = "Reconhecimento de placas veiculares offline com PySide6, OpenCV, ONNX e Tesseract"
+description = "Reconhecimento de placas veiculares offline com PySide6, OpenCV e Redes Neurais ONNX (YOLOv8 + FastPlateOCR)"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
@@ -9,7 +9,6 @@ dependencies = [
     "opencv-python-headless>=4.8.0",
     "numpy>=1.26.0,<2.0.0",
     "onnxruntime>=1.16.0",
-    "pytesseract>=0.3.10",
     "fast-plate-ocr>=1.1.0",
 ]
 
@@ -18,6 +17,7 @@ easyocr = ["easyocr>=1.7.0"]
 
 [dependency-groups]
 dev = [
+    "pyinstaller>=6.22.3",
     "pytest>=8.0.0",
     "ruff>=0.3.0",
 ]

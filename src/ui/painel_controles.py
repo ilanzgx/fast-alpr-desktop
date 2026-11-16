@@ -164,39 +164,13 @@ class PainelControles(QWidget):
         grupo = QGroupBox("4. OCR e Pós-processamento")
         layout = QVBoxLayout(grupo)
         layout.setContentsMargins(8, 12, 8, 8)
-        layout.setSpacing(6)
+        layout.setSpacing(8)
 
-        # Seletor do Motor de OCR
-        layout.addWidget(QLabel("Motor de OCR:"))
-        self._combo_engine = QComboBox()
-        self._combo_engine.addItem("FastPlateOCR (Rede Neural ONNX)", "fast_plate_ocr")
-        self._combo_engine.addItem("Tesseract OCR (Clássico)", "tesseract")
-        self._combo_engine.currentIndexChanged.connect(self._on_engine_alterado)
-        layout.addWidget(self._combo_engine)
+        lbl_motor = QLabel("Motor: <b>FastPlateOCR</b> (Rede Neural ONNX)")
+        lbl_motor.setStyleSheet("color: #4A5568; font-size: 11px;")
+        layout.addWidget(lbl_motor)
 
-        # Controles específicos do Tesseract
-        self._widget_tesseract = QWidget()
-        layout_tess = QVBoxLayout(self._widget_tesseract)
-        layout_tess.setContentsMargins(0, 0, 0, 0)
-        layout_tess.setSpacing(6)
-
-        layout_tess.addWidget(QLabel("PSM (Tesseract):"))
-        self._combo_psm = QComboBox()
-        self._combo_psm.addItem("7 - Linha Única (Padrão)", 7)
-        self._combo_psm.addItem("13 - Linha Crua", 13)
-        self._combo_psm.addItem("8 - Palavra Única", 8)
-        self._combo_psm.addItem("6 - Bloco Uniforme", 6)
-        self._combo_psm.currentIndexChanged.connect(lambda: self.parametros_alterados.emit())
-        layout_tess.addWidget(self._combo_psm)
-
-        self._chk_robusta = QCheckBox("Leitura Robusta (multi-tentativa)")
-        self._chk_robusta.stateChanged.connect(lambda: self.parametros_alterados.emit())
-        layout_tess.addWidget(self._chk_robusta)
-
-        layout.addWidget(self._widget_tesseract)
-        self._widget_tesseract.setVisible(False)
-
-        # Opções comuns
+        # Opções
         self._chk_livre = QCheckBox("Modo Livre (placas internacionais)")
         self._chk_livre.stateChanged.connect(lambda: self.parametros_alterados.emit())
         layout.addWidget(self._chk_livre)
@@ -301,11 +275,6 @@ class PainelControles(QWidget):
         self._widget_adaptativo.setVisible(eh_adaptativa)
         self.parametros_alterados.emit()
 
-    def _on_engine_alterado(self, index: int) -> None:
-        eh_tesseract = (self._combo_engine.currentData() == "tesseract")
-        self._widget_tesseract.setVisible(eh_tesseract)
-        self.parametros_alterados.emit()
-
     def _abrir_seletor_arquivo(self) -> None:
         caminho, _ = QFileDialog.getOpenFileName(
             self,
@@ -338,7 +307,6 @@ class PainelControles(QWidget):
         """Coleta os valores atuais dos controles da interface."""
         metodo = "yolo" if self._combo_metodo.currentIndex() == 0 else "classico"
         binarizacao = "otsu" if self._combo_limiar.currentIndex() == 0 else "adaptativa"
-        psm = self._combo_psm.currentData()
 
         # Garante que o kernel seja ímpar
         k = self._spin_kernel.value()
@@ -348,8 +316,6 @@ class PainelControles(QWidget):
         b = self._spin_bloco.value()
         if b % 2 == 0:
             b += 1
-
-        engine = str(self._combo_engine.currentData() or "fast_plate_ocr")
 
         return ParametrosPipeline(
             metodo=metodo,
@@ -363,8 +329,6 @@ class PainelControles(QWidget):
             binarizacao=binarizacao,
             bloco_adaptativo=b,
             constante_adaptativa=self._spin_c.value(),
-            ocr_engine=engine,
-            ocr_psm=psm,
+            ocr_engine="fast_plate_ocr",
             modo_livre=self._chk_livre.isChecked(),
-            leitura_robusta=self._chk_robusta.isChecked(),
         )
