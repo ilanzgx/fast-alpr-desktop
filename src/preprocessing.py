@@ -137,6 +137,12 @@ def estimar_angulo_inclinacao(cinza: np.ndarray) -> float:
     if h < 10 or w < 20:
         return 0.0
 
+    aspecto = w / max(1, h)
+    # Placas quadradas ou de moto (aspecto < 1.6) não devem sofrer rotação por Hough,
+    # pois caracteres em duas linhas geram traços diagonais cruzados que falseiam a inclinação
+    if aspecto < 1.6:
+        return 0.0
+
     # 1. CLAHE para reforçar contraste de bordas mesmo em baixa iluminação
     clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
     cinza_clahe = clahe.apply(cinza)
@@ -144,13 +150,15 @@ def estimar_angulo_inclinacao(cinza: np.ndarray) -> float:
     # 2. Detecção via Hough Lines Ponderadas por Comprimento
     suave = cv2.GaussianBlur(cinza_clahe, (5, 5), 0)
     bordas = cv2.Canny(suave, 50, 150)
+    # Exige linhas estruturais longas (pelo menos 25% a 28% da largura da placa)
+    min_len = max(20, int(w * 0.26))
     linhas = cv2.HoughLinesP(
         bordas,
         rho=1,
         theta=np.pi / 180,
-        threshold=max(14, int(w * 0.12)),
-        minLineLength=max(14, int(w * 0.14)),
-        maxLineGap=max(5, int(w * 0.05)),
+        threshold=max(16, int(w * 0.16)),
+        minLineLength=min_len,
+        maxLineGap=max(6, int(w * 0.06)),
     )
 
     angulos: list[float] = []
@@ -171,58 +179,47 @@ def estimar_angulo_inclinacao(cinza: np.ndarray) -> float:
             elif ang < -45.0:
                 ang += 90.0
 
-            if -45.0 <= ang <= 45.0:
+            # Placas automotivas válidas não excedem 35° de inclinação na via pública
+            if -35.0 <= ang <= 35.0:
                 angulos.append(ang)
-                pesos.append(comp)
+                # Ponderação quadrática dá peso muito maior para bordas longas da placa do que letras
+                pesos.append(comp ** 2)
 
     if angulos and sum(pesos) > 0:
         # Agrupa em bins de 2 graus para encontrar a moda (orientação dominante)
-        # Evita cancelamento mútuo entre bordas da placa e traços inclinados de caracteres
-        bins = np.arange(-45, 47, 2)
+        bins = np.arange(-35, 37, 2)
         hist, bin_edges = np.histogram(angulos, bins=bins, weights=pesos)
         idx_pico = int(np.argmax(hist))
-        ang_pico = (bin_edges[idx_pico] + bin_edges[idx_pico + 1]) / 2.0
+        peso_pico = float(hist[idx_pico])
+        peso_total = float(sum(pesos))
 
-        proximas = [a for a, p in zip(angulos, pesos) if abs(a - ang_pico) <= 4.0]
-        pesos_prox = [p for a, p in zip(angulos, pesos) if abs(a - ang_pico) <= 4.0]
-        if proximas and sum(pesos_prox) > 0:
-            return float(np.average(proximas, weights=pesos_prox))
-        return float(ang_pico)
+        # O pico dominante deve representar suporte consistente (pelo menos 25% do peso total)
+        # para evitar que traços diagonais isolados decidam o ângulo da placa
+        if peso_pico >= (peso_total * 0.25):
+            ang_pico = (bin_edges[idx_pico] + bin_edges[idx_pico + 1]) / 2.0
+            proximas = [a for a, p in zip(angulos, pesos) if abs(a - ang_pico) <= 4.0]
+            pesos_prox = [p for a, p in zip(angulos, pesos) if abs(a - ang_pico) <= 4.0]
+            if proximas and sum(pesos_prox) > 0:
+                return float(np.average(proximas, weights=pesos_prox))
+            return float(ang_pico)
 
-    # 3. Fallback: minAreaRect no contorno claro da placa
+    # 3. Fallback: minAreaRect no contorno claro da placa apenas se tiver aspecto retangular consistente
     _, thr = cv2.threshold(cinza_clahe, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     contornos, _ = cv2.findContours(thr, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     for c in sorted(contornos, key=cv2.contourArea, reverse=True):
-        if cv2.contourArea(c) > (h * w * 0.10):
+        if cv2.contourArea(c) > (h * w * 0.20):
             rect = cv2.minAreaRect(c)
             (rx, ry), (rw, rh), rang = rect
-            aspecto_rect = max(rw, rh) / max(1.0, min(rw, rh))
+            larg_c = max(rw, rh)
+            alt_c = max(1.0, min(rw, rh))
+            aspecto_rect = larg_c / alt_c
             if rw < rh:
                 rang += 90.0
             if rang > 45.0:
                 rang -= 90.0
-            if abs(rang) >= 35.0 and aspecto_rect < 1.35:
-                continue
-            if abs(rang) <= 45.0:
+            # Exige aspecto retangular claro de placa (>= 2.0)
+            if aspecto_rect >= 2.0 and abs(rang) <= 35.0:
                 return float(rang)
-
-    # 4. Fallback clássico: minAreaRect nos pixels escuros do texto
-    by = max(1, int(h * 0.08))
-    bx = max(1, int(w * 0.05))
-    interior = thr[by : h - by, bx : w - bx]
-    pontos = np.column_stack(np.where(interior < 128))
-    if len(pontos) >= 15:
-        pontos_xy = pontos[:, ::-1].astype(np.float32)
-        retangulo = cv2.minAreaRect(pontos_xy)
-        angulo = retangulo[-1]
-        larg_ret, alt_ret = retangulo[1]
-        aspecto_txt = max(larg_ret, alt_ret) / max(1.0, min(larg_ret, alt_ret))
-        if larg_ret < alt_ret:
-            angulo += 90.0
-        if angulo > 45.0:
-            angulo -= 90.0
-        if abs(angulo) <= 45.0 and not (abs(angulo) >= 35.0 and aspecto_txt < 1.35):
-            return float(angulo)
 
     return 0.0
 
@@ -527,13 +524,13 @@ def corrigir_inclinacao(
             x, y, cw, ch = cv2.boundingRect(c_cont)
             aspecto = cw / max(1, ch)
             area = cv2.contourArea(c_cont)
-            if aspecto >= 1.8 and cw > (novo_w * 0.50) and ch > 15:
+            if aspecto >= 1.8 and cw > (novo_w * 0.70) and ch > 15:
                 candidatos.append((area, (x, y, cw, ch)))
 
         if candidatos:
             candidatos.sort(reverse=True)
             _, (bx, by, bw, bh) = candidatos[0]
-            pad_x = max(8, int(round(bw * min(margem_zoom_out, 0.08))))
+            pad_x = max(8, int(round(bw * max(margem_zoom_out, 0.08))))
             pad_y = max(8, int(round(bh * max(margem_zoom_out, 0.10))))
             return _recortar_com_zoom_out(corrigida, bx, by, bx + bw, by + bh, pad_x, pad_y), angulo
 
