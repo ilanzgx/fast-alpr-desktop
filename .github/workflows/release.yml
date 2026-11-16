@@ -14,16 +14,14 @@ permissions:
   contents: write
 
 jobs:
-  build-release:
-    name: Empacotar Executável e Publicar Release
+  build-windows:
+    name: Compilar Windows (.exe)
     runs-on: windows-latest
     timeout-minutes: 25
 
     steps:
       - name: Checkout do repositório
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Instalar uv
         uses: astral-sh/setup-uv@v5
@@ -60,11 +58,162 @@ jobs:
         run: |
           Compress-Archive -Path dist/ALPR-Placas.exe -DestinationPath dist/ALPR-Placas-windows-x64.zip -Force
 
+      - name: Upload de artefatos Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            dist/ALPR-Placas.exe
+            dist/ALPR-Placas-windows-x64.zip
+          retention-days: 1
+
+  build-linux:
+    name: Compilar Linux (AppImage & Tarball)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar dependências de sistema (Qt6 / X11 / OpenGL)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-sync1 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
+            libxcb-xkb1 \
+            wget \
+            file
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: uv sync --dev
+
+      - name: Baixar modelos neurais de referência (YOLO e FastPlateOCR)
+        run: uv run python scripts/baixar_modelo_referencia.py
+
+      - name: Construir Binário com PyInstaller
+        run: |
+          uv run pyinstaller \
+            --noconsole \
+            --onefile \
+            --name "ALPR-Placas" \
+            --icon "src/ui/assets/icone.png" \
+            --add-data "src/ui/assets:src/ui/assets" \
+            --add-data "models:models" \
+            --collect-all "fast_plate_ocr" \
+            --collect-all "onnxruntime" \
+            src/app.py
+
+      - name: Criar Estrutura do AppImage (AppDir)
+        run: |
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+
+          # Copia binário compilado
+          cp dist/ALPR-Placas AppDir/usr/bin/ALPR-Placas
+          chmod +x AppDir/usr/bin/ALPR-Placas
+
+          # Copia ícones
+          cp src/ui/assets/icone.png AppDir/alpr-placas.png
+          cp src/ui/assets/icone.png AppDir/usr/share/icons/hicolor/256x256/apps/alpr-placas.png
+
+          # Cria arquivo .desktop
+          cat << 'EOF' > AppDir/alpr-placas.desktop
+          [Desktop Entry]
+          Name=ALPR Placas
+          Comment=Reconhecimento Automático de Placas Veiculares
+          Exec=ALPR-Placas
+          Icon=alpr-placas
+          Terminal=false
+          Type=Application
+          Categories=Utility;Science;ArtificialIntelligence;
+          EOF
+          cp AppDir/alpr-placas.desktop AppDir/usr/share/applications/alpr-placas.desktop
+
+          # Cria script AppRun
+          cat << 'EOF' > AppDir/AppRun
+          #!/bin/sh
+          SELF=$(readlink -f "$0")
+          HERE=${SELF%/*}
+          export PATH="${HERE}/usr/bin:${PATH}"
+          export LD_LIBRARY_PATH="${HERE}/usr/lib:${LD_LIBRARY_PATH}"
+          exec "${HERE}/usr/bin/ALPR-Placas" "$@"
+          EOF
+          chmod +x AppDir/AppRun
+
+      - name: Gerar AppImage com appimagetool
+        run: |
+          chmod -R 755 AppDir
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+          chmod +x appimagetool
+          ./appimagetool --appimage-extract
+          ARCH=x86_64 ./squashfs-root/AppRun --no-appstream AppDir dist/ALPR-Placas-x86_64.AppImage
+          chmod +x dist/ALPR-Placas-x86_64.AppImage
+
+      - name: Compactar Binário Linux em Tarball
+        run: |
+          tar -czf dist/ALPR-Placas-linux-x64.tar.gz -C dist ALPR-Placas
+
+      - name: Upload de artefatos Linux
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            dist/ALPR-Placas-x86_64.AppImage
+            dist/ALPR-Placas-linux-x64.tar.gz
+          retention-days: 1
+
+  publish-release:
+    name: Publicar Release no GitHub
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout do repositório (para geração de notas)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Baixar todos os artefatos
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Organizar e validar arquivos da Release
+        run: |
+          mkdir -p release-files
+          find artifacts -type f -exec cp {} release-files/ \;
+          echo "=== Arquivos prontos para publicação ==="
+          ls -lh release-files/
+
       - name: Publicar Release no GitHub
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           make_latest: true
-          files: |
-            dist/ALPR-Placas.exe
-            dist/ALPR-Placas-windows-x64.zip
+          files: release-files/*
